@@ -1,7 +1,13 @@
-
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
+    "target": "ES2022",
+    "experimentalDecorators": false,
+    "emitDecoratorMetadata": false,
+    "lib": [
+      "ES2022",
+      "ESNext.Decorators"
+    ],
     "rootDir": "./src",
     "outDir": "./dist",
     "noEmit": true

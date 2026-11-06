@@ -1,48 +1,91 @@
 
-import type { EntityTarget } from './entity-metadata';
+import type {
+    EntityTarget
+} from './entity-metadata';
 
-export type RelationType =
-    | 'one-to-one'
-    | 'one-to-many'
-    | 'many-to-one'
-    | 'many-to-many';
+import type {
+    RelationType
+} from './relation-type';
 
-export type ReferentialAction =
-    | 'CASCADE'
-    | 'RESTRICT'
-    | 'SET NULL'
-    | 'NO ACTION'
-    | 'SET DEFAULT';
+import type {
+    ReferentialAction
+} from './referential-action';
 
-export interface JoinColumnMetadata {
-    readonly name: string;
-    readonly referencedColumnName: string;
+import type {
+    JoinColumnMetadata
+} from './join-column-metadata';
+
+import type {
+    JoinTableMetadata
+} from './join-table-metadata';
+
+/**
+ * Permite resolver la entidad destino
+ * de manera diferida.
+ */
+export type RelationTargetFactory<
+    T extends object = object
+> = () => EntityTarget<T>;
+
+/**
+ * Selecciona una propiedad de la entidad destino.
+ *
+ * Ejemplo:
+ * user => user.orders
+ */
+export type InverseRelationSelector<
+    T extends object
+> = (entity: T) => unknown;
+
+export interface RelationOptions {
+    readonly nullable?: boolean;
+
+    readonly onDelete?: ReferentialAction;
+    readonly onUpdate?: ReferentialAction;
 }
 
-export interface JoinTableMetadata {
-    readonly name: string;
-    readonly schema?: string;
-    readonly joinColumn: JoinColumnMetadata;
-    readonly inverseJoinColumn: JoinColumnMetadata;
-}
-
-export interface RelationMetadata {
+/**
+ * Metadatos normalizados de una relación.
+ *
+ * El destino se conserva como una función
+ * para resolverlo posteriormente.
+ */
+export interface RelationMetadata<
+    T extends object = object
+> {
     readonly propertyKey: string | symbol;
+
     readonly type: RelationType;
 
-    /**
-     * Se resuelve cuando todas las entidades
-     * ya están registradas.
-     */
-    readonly target: () => EntityTarget;
+    readonly target: RelationTargetFactory<T>;
 
+    /**
+     * Propiedad inversa, si existe.
+     *
+     * Ejemplo: orders en User.
+     */
     readonly inversePropertyKey?: string | symbol;
+
+    /**
+     * Indica si esta relación administra
+     * la clave foránea o la tabla intermedia.
+     */
+    readonly isOwningSide: boolean;
 
     readonly nullable: boolean;
 
     readonly onDelete?: ReferentialAction;
     readonly onUpdate?: ReferentialAction;
 
-    readonly joinColumn?: JoinColumnMetadata;
+    /**
+     * Columnas de unión para OneToOne
+     * o ManyToOne propietarios.
+     */
+    readonly joinColumns: readonly JoinColumnMetadata[];
+
+    /**
+     * Tabla intermedia para ManyToMany
+     * del lado propietario.
+     */
     readonly joinTable?: JoinTableMetadata;
 }

@@ -7,7 +7,17 @@ export type {
     PrimaryKeyGenerationStrategy,
     EntityTarget,
     EntityOptions,
-    EntityMetadata
+    EntityMetadata,
+    RelationType,
+    ReferentialAction,
+    JoinColumnOptions,
+    JoinColumnMetadata,
+    JoinTableOptions,
+    JoinTableMetadata,
+    RelationTargetFactory,
+    InverseRelationSelector,
+    RelationOptions,
+    RelationMetadata
 } from './contracts';
 
 export { MetadataRegistry } from './metadata-registry';

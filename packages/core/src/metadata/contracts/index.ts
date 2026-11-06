@@ -16,3 +16,26 @@ export type {
     EntityOptions,
     EntityMetadata
 } from './entity-metadata';
+
+export type { RelationType } from './relation-type';
+
+export type {
+    ReferentialAction
+} from './referential-action';
+
+export type {
+    JoinColumnOptions,
+    JoinColumnMetadata
+} from './join-column-metadata';
+
+export type {
+    JoinTableOptions,
+    JoinTableMetadata
+} from './join-table-metadata';
+
+export type {
+    RelationTargetFactory,
+    InverseRelationSelector,
+    RelationOptions,
+    RelationMetadata
+} from './relation-metadata';
