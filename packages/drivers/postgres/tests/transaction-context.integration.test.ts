@@ -23,14 +23,14 @@ describe('TransactionContext - PostgreSQL integration', () => {
     driver = new PostgreSQLDriver();
 
 
-await driver.connect({
-  type: 'postgres',
-  host: process.env.PGHOST!,
-  port: Number(process.env.PGPORT ?? 5432),
-  database: process.env.PGDATABASE!,
-  user: process.env.PGUSER!,
-  password: process.env.PGPASSWORD!
-});
+    await driver.connect({
+      type: 'postgres',
+      host: process.env.PGHOST!,
+      port: Number(process.env.PGPORT ?? 5432),
+      database: process.env.PGDATABASE!,
+      user: process.env.PGUSER!,
+      password: process.env.PGPASSWORD!
+    });
 
 
     manager = new TransactionManager(driver);

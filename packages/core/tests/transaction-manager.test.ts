@@ -1,40 +1,33 @@
+import { describe, it, expect, vi } from "vitest";
 
-import { describe, it, expect, vi } from 'vitest';
+import { TransactionManager } from "../src/transactions";
+import { TransactionError } from "../src/transactions";
 
-import { TransactionManager } from '../src/transactions';
-import { TransactionError } from '../src/transactions';
-
-import type {
-  DatabaseDriver,
-  DatabaseConnection
-} from '../src/drivers';
+import type { DatabaseDriver, DatabaseConnection } from "../src/drivers";
 
 function createMocks() {
   const connection = {
     beginTransaction: vi.fn().mockResolvedValue(undefined),
     commit: vi.fn().mockResolvedValue(undefined),
     rollback: vi.fn().mockResolvedValue(undefined),
-    release: vi.fn().mockResolvedValue(undefined)
+    release: vi.fn().mockResolvedValue(undefined),
   };
 
   const driver = {
-    acquireConnection: vi.fn().mockResolvedValue(connection)
+    acquireConnection: vi.fn().mockResolvedValue(connection),
   };
 
-  const manager = new TransactionManager(
-    driver as unknown as DatabaseDriver
-  );
+  const manager = new TransactionManager(driver as unknown as DatabaseDriver);
 
   return {
     manager,
     driver,
-    connection
+    connection,
   };
 }
 
-describe('TransactionManager', () => {
-
-  it('should commit a successful transaction', async () => {
+describe("TransactionManager", () => {
+  it("should commit a successful transaction", async () => {
     const { manager, connection } = createMocks();
 
     const result = await manager.transaction(async () => {
@@ -48,25 +41,25 @@ describe('TransactionManager', () => {
     expect(connection.release).toHaveBeenCalledOnce();
   });
 
-  it('should rollback when callback fails', async () => {
+  it("should rollback when callback fails", async () => {
     const { manager, connection } = createMocks();
 
     await expect(
       manager.transaction(async () => {
-        throw new Error('Business error');
-      })
-    ).rejects.toThrow('Business error');
+        throw new Error("Business error");
+      }),
+    ).rejects.toThrow("Business error");
 
     expect(connection.commit).not.toHaveBeenCalled();
     expect(connection.rollback).toHaveBeenCalledOnce();
     expect(connection.release).toHaveBeenCalledOnce();
   });
 
-  it('should preserve original error when rollback fails', async () => {
+  it("should preserve original error when rollback fails", async () => {
     const { manager, connection } = createMocks();
 
-    const businessError = new Error('Business error');
-    const rollbackError = new Error('Rollback failed');
+    const businessError = new Error("Business error");
+    const rollbackError = new Error("Rollback failed");
 
     connection.rollback.mockRejectedValueOnce(rollbackError);
 
@@ -75,7 +68,7 @@ describe('TransactionManager', () => {
         throw businessError;
       });
 
-      expect.fail('Transaction should fail');
+      expect.fail("Transaction should fail");
     } catch (error) {
       expect(error).toBeInstanceOf(TransactionError);
 
@@ -88,42 +81,42 @@ describe('TransactionManager', () => {
     expect(connection.release).toHaveBeenCalledOnce();
   });
 
-  it('should not rollback after failed commit', async () => {
+  it("should not rollback after failed commit", async () => {
     const { manager, connection } = createMocks();
 
     connection.commit.mockRejectedValueOnce(
-      new Error('Connection lost during COMMIT')
+      new Error("Connection lost during COMMIT"),
     );
 
-    await expect(
-      manager.transaction(async () => 'done')
-    ).rejects.toThrow('Connection lost during COMMIT');
+    await expect(manager.transaction(async () => "done")).rejects.toThrow(
+      "Connection lost during COMMIT",
+    );
 
     expect(connection.rollback).not.toHaveBeenCalled();
     expect(connection.release).toHaveBeenCalledOnce();
   });
 
-  it('should release connection when beginTransaction fails', async () => {
+  it("should release connection when beginTransaction fails", async () => {
     const { manager, connection } = createMocks();
 
     connection.beginTransaction.mockRejectedValueOnce(
-      new Error('BEGIN failed')
+      new Error("BEGIN failed"),
     );
 
-    await expect(
-      manager.transaction(async () => 10)
-    ).rejects.toThrow('BEGIN failed');
+    await expect(manager.transaction(async () => 10)).rejects.toThrow(
+      "BEGIN failed",
+    );
 
     expect(connection.commit).not.toHaveBeenCalled();
     expect(connection.rollback).not.toHaveBeenCalled();
     expect(connection.release).toHaveBeenCalledOnce();
   });
 
-  it('should preserve callback and release errors', async () => {
+  it("should preserve callback and release errors", async () => {
     const { manager, connection } = createMocks();
 
-    const businessError = new Error('Business error');
-    const releaseError = new Error('Release failed');
+    const businessError = new Error("Business error");
+    const releaseError = new Error("Release failed");
 
     connection.release.mockRejectedValueOnce(releaseError);
 
@@ -132,7 +125,7 @@ describe('TransactionManager', () => {
         throw businessError;
       });
 
-      expect.fail('Transaction should fail');
+      expect.fail("Transaction should fail");
     } catch (error) {
       expect(error).toBeInstanceOf(TransactionError);
 
@@ -143,7 +136,7 @@ describe('TransactionManager', () => {
     }
   });
 
-  it('should return undefined when callback has no result', async () => {
+  it("should return undefined when callback has no result", async () => {
     const { manager } = createMocks();
 
     const result = await manager.transaction(async () => {
@@ -153,16 +146,194 @@ describe('TransactionManager', () => {
     expect(result).toBeUndefined();
   });
 
-  it('should propagate acquireConnection failure', async () => {
+  it("should propagate acquireConnection failure", async () => {
     const { manager, driver } = createMocks();
 
-    driver.acquireConnection.mockRejectedValueOnce(
-      new Error('Pool exhausted')
-    );
+    driver.acquireConnection.mockRejectedValueOnce(new Error("Pool exhausted"));
 
-    await expect(
-      manager.transaction(async () => 1)
-    ).rejects.toThrow('Pool exhausted');
+    await expect(manager.transaction(async () => 1)).rejects.toThrow(
+      "Pool exhausted",
+    );
   });
+
+  it("should preserve callback, rollback and release errors", async () => {
+    const { manager, connection } = createMocks();
+
+    const businessError = new Error("Business operation failed");
+    const rollbackError = new Error("ROLLBACK failed");
+    const releaseError = new Error("Release failed");
+
+    connection.rollback.mockRejectedValueOnce(rollbackError);
+    connection.release.mockRejectedValueOnce(releaseError);
+
+    let caught: unknown;
+
+    try {
+      await manager.transaction(async () => {
+        throw businessError;
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(TransactionError);
+
+    const transactionError = caught as TransactionError;
+
+    expect(transactionError.originalError).toBe(businessError);
+    expect(transactionError.rollbackError).toBe(rollbackError);
+    expect(transactionError.releaseError).toBe(releaseError);
+
+    expect(connection.commit).not.toHaveBeenCalled();
+    expect(connection.rollback).toHaveBeenCalledOnce();
+    expect(connection.release).toHaveBeenCalledOnce();
+  });
+
+  it("should preserve commit and release errors without rollback", async () => {
+    const { manager, connection } = createMocks();
+
+    const commitError = new Error("COMMIT outcome unknown");
+    const releaseError = new Error("Release failed");
+
+    connection.commit.mockRejectedValueOnce(commitError);
+    connection.release.mockRejectedValueOnce(releaseError);
+
+    let caught: unknown;
+
+    try {
+      await manager.transaction(async () => "completed");
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(TransactionError);
+
+    const transactionError = caught as TransactionError;
+
+    expect(transactionError.originalError).toBe(commitError);
+    expect(transactionError.releaseError).toBe(releaseError);
+
+    expect(connection.rollback).not.toHaveBeenCalled();
+    expect(connection.release).toHaveBeenCalledOnce();
+  });
+
+
+  it('should report release failure after successful commit', async () => {
+    const { manager, connection } = createMocks();
+
+    const releaseError = new Error('Pool release failed');
+
+    connection.release.mockRejectedValueOnce(releaseError);
+
+    let caught: unknown;
+
+    try {
+      await manager.transaction(async () => 100);
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(TransactionError);
+
+    const transactionError = caught as TransactionError;
+
+    expect(transactionError.originalError).toBe(releaseError);
+
+    expect(connection.commit).toHaveBeenCalledOnce();
+    expect(connection.rollback).not.toHaveBeenCalled();
+    expect(connection.release).toHaveBeenCalledOnce();
+  });
+
+  it('should preserve begin and release errors', async () => {
+    const { manager, connection } = createMocks();
+
+    const beginError = new Error('BEGIN failed');
+    const releaseError = new Error('Release failed');
+
+    connection.beginTransaction.mockRejectedValueOnce(beginError);
+    connection.release.mockRejectedValueOnce(releaseError);
+
+    let caught: unknown;
+
+    try {
+      await manager.transaction(async () => 100);
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(TransactionError);
+
+    const transactionError = caught as TransactionError;
+
+    expect(transactionError.originalError).toBe(beginError);
+    expect(transactionError.releaseError).toBe(releaseError);
+
+    expect(connection.commit).not.toHaveBeenCalled();
+    expect(connection.rollback).not.toHaveBeenCalled();
+    expect(connection.release).toHaveBeenCalledOnce();
+  });
+
+
+  it('should preserve original error when rollback rejects with undefined', async () => {
+    const { manager, connection } = createMocks();
+
+    const businessError = new Error('Business operation failed');
+
+    connection.rollback.mockRejectedValueOnce(undefined);
+
+    let caught: unknown;
+    let rejected = false;
+
+    try {
+      await manager.transaction(async () => {
+        throw businessError;
+      });
+    } catch (error) {
+      rejected = true;
+      caught = error;
+    }
+
+    expect(rejected).toBe(true);
+    expect(caught).toBeInstanceOf(TransactionError);
+
+    const transactionError = caught as TransactionError;
+
+    expect(transactionError.originalError).toBe(businessError);
+    expect(transactionError.cause).toBe(businessError);
+    expect(transactionError.rollbackError).toBeUndefined();
+
+    expect(connection.rollback).toHaveBeenCalledOnce();
+    expect(connection.release).toHaveBeenCalledOnce();
+  });
+
+
+  it('should detect release failure when it rejects with undefined', async () => {
+    const { manager, connection } = createMocks();
+
+    connection.release.mockRejectedValueOnce(undefined);
+
+    let caught: unknown;
+    let rejected = false;
+
+    try {
+      await manager.transaction(async () => 100);
+    } catch (error) {
+      rejected = true;
+      caught = error;
+    }
+
+    expect(rejected).toBe(true);
+    expect(caught).toBeInstanceOf(TransactionError);
+
+    const transactionError = caught as TransactionError;
+
+    expect(transactionError.originalError).toBeUndefined();
+    expect(transactionError.cause).toBeUndefined();
+
+    expect(connection.commit).toHaveBeenCalledOnce();
+    expect(connection.rollback).not.toHaveBeenCalled();
+    expect(connection.release).toHaveBeenCalledOnce();
+  });
+
 
 });

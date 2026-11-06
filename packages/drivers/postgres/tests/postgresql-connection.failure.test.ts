@@ -225,4 +225,81 @@ describe('PostgreSQLConnection - Transaction failures', () => {
     expect(mock.release).toHaveBeenCalledWith();
   });
 
+
+  it('should preserve rollback and release errors', async () => {
+    const mock = createMockClient();
+
+    const rollbackError = new Error('ROLLBACK failed');
+    const releaseError = new Error('Release failed');
+
+    mock.query
+      .mockResolvedValueOnce({}) // BEGIN
+      .mockRejectedValueOnce(rollbackError); // ROLLBACK
+
+    mock.release.mockImplementationOnce(() => {
+      throw releaseError;
+    });
+
+    const connection = new PostgreSQLConnection(mock.client);
+
+    await connection.beginTransaction();
+
+    let caught: unknown;
+
+    try {
+      await connection.release();
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(AggregateError);
+
+    const aggregate = caught as AggregateError;
+
+    expect(aggregate.errors).toEqual([
+      rollbackError,
+      releaseError
+    ]);
+
+    expect(connection.isReleased).toBe(true);
+    expect(mock.release).toHaveBeenCalledWith(rollbackError);
+  });
+
+  it('should propagate release failure', async () => {
+    const mock = createMockClient();
+
+    const releaseError = new Error('Pool release failed');
+
+    mock.release.mockImplementationOnce(() => {
+      throw releaseError;
+    });
+
+    const connection = new PostgreSQLConnection(mock.client);
+
+    await expect(
+      connection.release()
+    ).rejects.toBe(releaseError);
+
+    expect(connection.isReleased).toBe(true);
+    expect(mock.release).toHaveBeenCalledOnce();
+  });
+
+  it('should not retry release after failure', async () => {
+    const mock = createMockClient();
+
+    mock.release.mockImplementationOnce(() => {
+      throw new Error('Release failed');
+    });
+
+    const connection = new PostgreSQLConnection(mock.client);
+
+    await expect(connection.release()).rejects.toThrow(
+      'Release failed'
+    );
+
+    await expect(connection.release()).resolves.toBeUndefined();
+
+    expect(mock.release).toHaveBeenCalledOnce();
+  });
+
 });

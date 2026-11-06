@@ -16,50 +16,70 @@ export class TransactionManager {
     private readonly driver: DatabaseDriver
   ) { }
 
+
   async transaction<T>(
     callback: (connection: DatabaseConnection) => Promise<T>,
     options?: TransactionOptions
   ): Promise<T> {
     const connection = await this.driver.acquireConnection();
 
-    let transactionStarted = false;
-    let result: T | undefined;
-    let failure: unknown;
+    type TransactionState =
+      | 'NOT_STARTED'
+      | 'ACTIVE'
+      | 'COMMIT_ATTEMPTED';
+
+    let state: TransactionState = 'NOT_STARTED';
+
+    let result!: T;
+
     let hasFailure = false;
+    let failure: unknown;
+
+    let hasRollbackError = false;
     let rollbackError: unknown;
+
+    let hasReleaseError = false;
     let releaseError: unknown;
 
     try {
       await connection.beginTransaction(options);
-      transactionStarted = true;
+      state = 'ACTIVE';
 
       result = await callback(connection);
 
-      // Si COMMIT falla, no intentamos un segundo COMMIT.
-      // Tampoco asumimos que la transacción fue revertida.
-      transactionStarted = false;
-      await connection.commit();
-    } catch (error) {
-      failure = error;
-      hasFailure = true;
+      // Una vez que intentamos COMMIT,
+      // no podemos asumir que la transacción
+      // sigue activa ni que fue revertida.
+      state = 'COMMIT_ATTEMPTED';
 
-      if (transactionStarted) {
+      await connection.commit();
+
+    } catch (error) {
+      hasFailure = true;
+      failure = error;
+
+      // Solo hacemos rollback cuando el fallo
+      // ocurrió antes de intentar COMMIT.
+      if (state === 'ACTIVE') {
         try {
           await connection.rollback();
         } catch (error) {
+          hasRollbackError = true;
           rollbackError = error;
         }
       }
+
     } finally {
       try {
         await connection.release();
       } catch (error) {
+        hasReleaseError = true;
         releaseError = error;
       }
     }
 
     if (hasFailure) {
-      if (rollbackError !== undefined || releaseError !== undefined) {
+      if (hasRollbackError || hasReleaseError) {
         throw new TransactionError(
           'Transaction failed and cleanup encountered errors.',
           failure,
@@ -71,15 +91,16 @@ export class TransactionManager {
       throw failure;
     }
 
-    if (releaseError !== undefined) {
+    if (hasReleaseError) {
       throw new TransactionError(
         'Transaction completed, but releasing the connection failed.',
         releaseError
       );
     }
 
-    return result as T;
+    return result;
   }
+
 
 
 

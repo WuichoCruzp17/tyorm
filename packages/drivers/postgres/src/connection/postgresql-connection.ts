@@ -29,31 +29,31 @@ export class PostgreSQLConnection implements DatabaseConnection {
 
 
 
-async execute<T = Record<string, unknown>>(
-  query: Query
-): Promise<QueryResult<T>> {
-  this.ensureActive();
+  async execute<T = Record<string, unknown>>(
+    query: Query
+  ): Promise<QueryResult<T>> {
+    this.ensureActive();
 
-  try {
-    const result = await this.client.query(
-      query.sql,
-      query.parameters ? [...query.parameters] : []
-    );
+    try {
+      const result = await this.client.query(
+        query.sql,
+        query.parameters ? [...query.parameters] : []
+      );
 
-    return {
-      rows: result.rows as T[],
-      affectedRows: result.rowCount,
-      command: result.command
-    };
-  } catch (error) {
-    if (isPostgreSQLConnectionError(error)) {
-      this.broken = true;
-      this.releaseError = this.toError(error);
+      return {
+        rows: result.rows as T[],
+        affectedRows: result.rowCount,
+        command: result.command
+      };
+    } catch (error) {
+      if (isPostgreSQLConnectionError(error)) {
+        this.broken = true;
+        this.releaseError = this.toError(error);
+      }
+
+      throw error;
     }
-
-    throw error;
   }
-}
 
 
 
@@ -145,22 +145,28 @@ async execute<T = Record<string, unknown>>(
     }
   }
 
+
   async release(): Promise<void> {
     if (this.released) {
       return;
     }
 
+    let rollbackFailed = false;
     let rollbackError: unknown;
 
     if (this.transactionActive && !this.broken) {
       try {
         await this.rollback();
       } catch (error) {
+        rollbackFailed = true;
         rollbackError = error;
       }
     }
 
     this.released = true;
+
+    let releaseFailed = false;
+    let releaseError: unknown;
 
     try {
       if (this.broken) {
@@ -172,15 +178,26 @@ async execute<T = Record<string, unknown>>(
         this.client.release();
       }
     } catch (error) {
-      if (rollbackError === undefined) {
-        throw error;
-      }
+      releaseFailed = true;
+      releaseError = error;
     }
 
-    if (rollbackError !== undefined) {
+    if (rollbackFailed && releaseFailed) {
+      throw new AggregateError(
+        [rollbackError, releaseError],
+        'ROLLBACK and connection release both failed.'
+      );
+    }
+
+    if (rollbackFailed) {
       throw rollbackError;
     }
+
+    if (releaseFailed) {
+      throw releaseError;
+    }
   }
+
 
   private ensureActive(): void {
     if (this.released) {
