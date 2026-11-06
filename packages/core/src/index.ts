@@ -12,7 +12,17 @@ export type {
     PrimaryKeyGenerationStrategy,
     EntityTarget,
     EntityOptions,
-    EntityMetadata
+    EntityMetadata,
+    RelationType,
+    ReferentialAction,
+    JoinColumnOptions,
+    JoinColumnMetadata,
+    JoinTableOptions,
+    JoinTableMetadata,
+    RelationTargetFactory,
+    InverseRelationSelector,
+    RelationOptions,
+    RelationMetadata
 } from './metadata';
 
 export function helloTyORM(): string {
@@ -30,4 +40,18 @@ export {
     Entity,
     getEntityMetadata,
     ensureSymbolMetadata
+} from './decorators';
+
+export {
+    ManyToOne,
+    OneToMany,
+    OneToOne,
+    ManyToMany,
+    JoinColumn,
+    JoinTable,
+    getRelationDeclarations
+} from './decorators';
+
+export type {
+    EntityRelationDeclarations
 } from './decorators';

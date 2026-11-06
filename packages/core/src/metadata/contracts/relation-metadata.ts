@@ -89,3 +89,8 @@ export interface RelationMetadata<
      */
     readonly joinTable?: JoinTableMetadata;
 }
+
+
+export type InverseRelationReference<T extends object> =
+    | keyof T
+    | InverseRelationSelector<T>;

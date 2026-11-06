@@ -39,3 +39,7 @@ export type {
     RelationOptions,
     RelationMetadata
 } from './relation-metadata';
+
+export type {
+    InverseRelationReference
+} from './relation-metadata';

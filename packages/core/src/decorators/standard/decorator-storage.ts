@@ -19,13 +19,31 @@ export const ENTITY_OPTIONS = Symbol('tyorm:entity-options');
 export const COLUMNS = Symbol('tyorm:columns');
 export const PRIMARY_KEYS = Symbol('tyorm:primary-keys');
 
+export const RELATIONS = Symbol('tyorm:relations');
+
+export const JOIN_COLUMNS = Symbol('tyorm:join-columns');
+
+export const JOIN_TABLES = Symbol('tyorm:join-tables');
+
+import type {
+    RelationDeclaration,
+    JoinColumnDeclaration,
+    JoinTableDeclaration
+} from './relation-declaration';
+
 type DeclarationKey =
     | typeof COLUMNS
-    | typeof PRIMARY_KEYS;
+    | typeof PRIMARY_KEYS
+    | typeof RELATIONS
+    | typeof JOIN_COLUMNS
+    | typeof JOIN_TABLES;
 
 type Declaration =
     | ColumnDeclaration
-    | PrimaryKeyDeclaration;
+    | PrimaryKeyDeclaration
+    | RelationDeclaration<any>
+    | JoinColumnDeclaration
+    | JoinTableDeclaration;
 
 export function appendDeclaration(
     metadata: DecoratorMetadataObject,

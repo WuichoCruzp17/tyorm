@@ -22,3 +22,10 @@ export type {
 
 export { MetadataRegistry } from './metadata-registry';
 export { MetadataError } from './metadata-error';
+export {
+    RelationMetadataResolver
+} from './relation-metadata-resolver';
+
+export type {
+    ResolvedEntityRelations
+} from './relation-metadata-resolver';
