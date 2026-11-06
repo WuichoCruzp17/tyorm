@@ -170,4 +170,59 @@ describe('PostgreSQLConnection - Transaction failures', () => {
     expect(mock.release).toHaveBeenCalledWith(beginError);
     expect(mock.query).toHaveBeenCalledTimes(1);
   });
+
+  it('should discard connection after transport error', async () => {
+    const mock = createMockClient();
+
+    const transportError = Object.assign(
+      new Error('Connection reset'),
+      { code: 'ECONNRESET' }
+    );
+
+    mock.query.mockRejectedValueOnce(transportError);
+
+    const connection = new PostgreSQLConnection(mock.client);
+
+    await expect(
+      connection.execute({ sql: 'SELECT 1' })
+    ).rejects.toThrow('Connection reset');
+
+    await expect(
+      connection.execute({ sql: 'SELECT 2' })
+    ).rejects.toThrow('unusable state');
+
+    await connection.release();
+
+    expect(mock.release).toHaveBeenCalledWith(
+      transportError
+    );
+  });
+
+  it('should allow rollback after SQL error', async () => {
+    const mock = createMockClient();
+
+    const sqlError = Object.assign(
+      new Error('Division by zero'),
+      { code: '22012' }
+    );
+
+    mock.query
+      .mockResolvedValueOnce({}) // BEGIN
+      .mockRejectedValueOnce(sqlError) // SELECT
+      .mockResolvedValueOnce({}); // ROLLBACK
+
+    const connection = new PostgreSQLConnection(mock.client);
+
+    await connection.beginTransaction();
+
+    await expect(
+      connection.execute({ sql: 'SELECT 1 / 0' })
+    ).rejects.toThrow('Division by zero');
+
+    await connection.rollback();
+    await connection.release();
+
+    expect(mock.release).toHaveBeenCalledWith();
+  });
+
 });

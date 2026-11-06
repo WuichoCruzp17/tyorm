@@ -82,6 +82,8 @@ export class TransactionManager {
   }
 
 
+
+
   async withContext<T>(
     callback: (context: TransactionContext) => Promise<T>,
     options?: TransactionOptions
@@ -99,20 +101,21 @@ export class TransactionManager {
         callbackFailed = true;
         callbackError = error;
       } finally {
-        // No se admiten nuevas operaciones.
+        // Bloquea nuevas operaciones inmediatamente.
         context.close();
       }
 
       let drainError: unknown;
+      let drainFailed = false;
 
       try {
-        // Esperar las consultas antes de COMMIT/ROLLBACK.
         await context.drain();
       } catch (error) {
+        drainFailed = true;
         drainError = error;
       }
 
-      if (callbackFailed && drainError !== undefined) {
+      if (callbackFailed && drainFailed) {
         throw new AggregateError(
           [callbackError, drainError],
           'Transaction callback and pending operations failed.'
@@ -123,13 +126,15 @@ export class TransactionManager {
         throw callbackError;
       }
 
-      if (drainError !== undefined) {
+      if (drainFailed) {
         throw drainError;
       }
 
       return result;
     }, options);
   }
+
+
 
 
 }

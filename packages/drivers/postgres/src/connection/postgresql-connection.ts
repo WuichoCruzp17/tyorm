@@ -1,6 +1,13 @@
 import type { PoolClient } from 'pg';
 import { TransactionOutcomeUnknownError } from
   '../errors/transaction-outcome-unknown.error';
+
+import {
+  isPostgreSQLConnectionError
+} from '../errors/postgresql-error-classifier';
+
+
+
 import type {
   DatabaseConnection,
   Query,
@@ -20,11 +27,14 @@ export class PostgreSQLConnection implements DatabaseConnection {
     return this.released;
   }
 
-  async execute<T = Record<string, unknown>>(
-    query: Query
-  ): Promise<QueryResult<T>> {
-    this.ensureActive();
 
+
+async execute<T = Record<string, unknown>>(
+  query: Query
+): Promise<QueryResult<T>> {
+  this.ensureActive();
+
+  try {
     const result = await this.client.query(
       query.sql,
       query.parameters ? [...query.parameters] : []
@@ -35,7 +45,16 @@ export class PostgreSQLConnection implements DatabaseConnection {
       affectedRows: result.rowCount,
       command: result.command
     };
+  } catch (error) {
+    if (isPostgreSQLConnectionError(error)) {
+      this.broken = true;
+      this.releaseError = this.toError(error);
+    }
+
+    throw error;
   }
+}
+
 
 
   async beginTransaction(
