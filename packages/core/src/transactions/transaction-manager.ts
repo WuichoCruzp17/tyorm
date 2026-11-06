@@ -4,12 +4,17 @@ import type {
   TransactionOptions
 } from '../drivers';
 
+import {
+  ManagedTransactionContext,
+  type TransactionContext
+} from './transaction-context';
+
 import { TransactionError } from './transaction-error';
 
 export class TransactionManager {
   constructor(
     private readonly driver: DatabaseDriver
-  ) {}
+  ) { }
 
   async transaction<T>(
     callback: (connection: DatabaseConnection) => Promise<T>,
@@ -75,4 +80,56 @@ export class TransactionManager {
 
     return result as T;
   }
+
+
+  async withContext<T>(
+    callback: (context: TransactionContext) => Promise<T>,
+    options?: TransactionOptions
+  ): Promise<T> {
+    return this.transaction(async (connection) => {
+      const context = new ManagedTransactionContext(connection);
+
+      let result!: T;
+      let callbackError: unknown;
+      let callbackFailed = false;
+
+      try {
+        result = await callback(context);
+      } catch (error) {
+        callbackFailed = true;
+        callbackError = error;
+      } finally {
+        // No se admiten nuevas operaciones.
+        context.close();
+      }
+
+      let drainError: unknown;
+
+      try {
+        // Esperar las consultas antes de COMMIT/ROLLBACK.
+        await context.drain();
+      } catch (error) {
+        drainError = error;
+      }
+
+      if (callbackFailed && drainError !== undefined) {
+        throw new AggregateError(
+          [callbackError, drainError],
+          'Transaction callback and pending operations failed.'
+        );
+      }
+
+      if (callbackFailed) {
+        throw callbackError;
+      }
+
+      if (drainError !== undefined) {
+        throw drainError;
+      }
+
+      return result;
+    }, options);
+  }
+
+
 }

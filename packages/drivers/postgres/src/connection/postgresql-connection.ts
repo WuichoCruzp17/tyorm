@@ -37,6 +37,7 @@ export class PostgreSQLConnection implements DatabaseConnection {
     };
   }
 
+
   async beginTransaction(
     options?: TransactionOptions
   ): Promise<void> {
@@ -59,16 +60,32 @@ export class PostgreSQLConnection implements DatabaseConnection {
       ? ` ISOLATION LEVEL ${isolationSql[isolationLevel]}`
       : '';
 
+    if (isolationLevel && !isolationSql[isolationLevel]) {
+      throw new Error(
+        `Unsupported isolation level: ${isolationLevel}`
+      );
+    }
+
     const readOnlyClause = options?.readOnly
       ? ' READ ONLY'
       : '';
 
-    await this.client.query(
-      `BEGIN${isolationClause}${readOnlyClause}`
-    );
+    try {
+      await this.client.query(
+        `BEGIN${isolationClause}${readOnlyClause}`
+      );
 
-    this.transactionActive = true;
+      this.transactionActive = true;
+    } catch (error) {
+      // No podemos garantizar el estado de la sesión.
+      // La conexión no debe regresar al pool.
+      this.broken = true;
+      this.releaseError = this.toError(error);
+
+      throw error;
+    }
   }
+
 
   async commit(): Promise<void> {
     this.ensureActive();
@@ -92,59 +109,59 @@ export class PostgreSQLConnection implements DatabaseConnection {
     }
   }
 
-async rollback(): Promise<void> {
-  this.ensureActive();
+  async rollback(): Promise<void> {
+    this.ensureActive();
 
-  if (!this.transactionActive) {
-    return;
-  }
+    if (!this.transactionActive) {
+      return;
+    }
 
-  try {
-    await this.client.query('ROLLBACK');
-    this.transactionActive = false;
-  } catch (error) {
-    this.broken = true;
-    this.releaseError = this.toError(error);
-    throw error;
-  }
-}
-
-async release(): Promise<void> {
-  if (this.released) {
-    return;
-  }
-
-  let rollbackError: unknown;
-
-  if (this.transactionActive && !this.broken) {
     try {
-      await this.rollback();
+      await this.client.query('ROLLBACK');
+      this.transactionActive = false;
     } catch (error) {
-      rollbackError = error;
-    }
-  }
-
-  this.released = true;
-
-  try {
-    if (this.broken) {
-      this.client.release(
-        this.releaseError ??
-          new Error('Database connection is unusable.')
-      );
-    } else {
-      this.client.release();
-    }
-  } catch (error) {
-    if (rollbackError === undefined) {
+      this.broken = true;
+      this.releaseError = this.toError(error);
       throw error;
     }
   }
 
-  if (rollbackError !== undefined) {
-    throw rollbackError;
+  async release(): Promise<void> {
+    if (this.released) {
+      return;
+    }
+
+    let rollbackError: unknown;
+
+    if (this.transactionActive && !this.broken) {
+      try {
+        await this.rollback();
+      } catch (error) {
+        rollbackError = error;
+      }
+    }
+
+    this.released = true;
+
+    try {
+      if (this.broken) {
+        this.client.release(
+          this.releaseError ??
+          new Error('Database connection is unusable.')
+        );
+      } else {
+        this.client.release();
+      }
+    } catch (error) {
+      if (rollbackError === undefined) {
+        throw error;
+      }
+    }
+
+    if (rollbackError !== undefined) {
+      throw rollbackError;
+    }
   }
-}
 
   private ensureActive(): void {
     if (this.released) {

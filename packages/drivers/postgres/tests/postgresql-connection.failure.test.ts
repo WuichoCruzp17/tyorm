@@ -152,4 +152,22 @@ describe('PostgreSQLConnection - Transaction failures', () => {
 
     expect(mock.release).toHaveBeenCalledTimes(1);
   });
+  it('should discard connection when BEGIN fails', async () => {
+    const mock = createMockClient();
+    const beginError = new Error('Connection lost during BEGIN');
+
+    mock.query.mockRejectedValueOnce(beginError);
+
+    const connection = new PostgreSQLConnection(mock.client);
+
+    await expect(
+      connection.beginTransaction()
+    ).rejects.toThrow('Connection lost during BEGIN');
+
+    await connection.release();
+
+    expect(connection.isReleased).toBe(true);
+    expect(mock.release).toHaveBeenCalledWith(beginError);
+    expect(mock.query).toHaveBeenCalledTimes(1);
+  });
 });
