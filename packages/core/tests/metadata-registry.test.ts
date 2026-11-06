@@ -172,20 +172,24 @@ describe('MetadataRegistry', () => {
         })).toThrow(/invalid length/);
     });
 
+
     it('should reject invalid decimal scale', () => {
         const registry = new MetadataRegistry();
+
+        // Excluimos length porque no aplica al tipo decimal
+        const { length: _length, ...column } = createColumn();
 
         expect(() => registry.register({
             ...createMetadata(),
             columns: [{
-                ...createColumn(),
+                ...column,
                 type: 'decimal',
-                length: undefined,
                 precision: 5,
                 scale: 8
             }]
         })).toThrow(/invalid scale/);
     });
+
 
     it('should reject nullable primary keys', () => {
         const registry = new MetadataRegistry();

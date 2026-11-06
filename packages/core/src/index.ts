@@ -23,3 +23,11 @@ export {
     MetadataRegistry,
     MetadataError
 } from './metadata';
+
+export {
+    Column,
+    PrimaryKey,
+    Entity,
+    getEntityMetadata,
+    ensureSymbolMetadata
+} from './decorators';

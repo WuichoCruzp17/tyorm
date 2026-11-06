@@ -1,0 +1,22 @@
+{
+    "extends": "./tsconfig.json",
+    "compilerOptions": {
+        "rootDir": ".",
+        "noEmit": true,
+        "target": "ES2022",
+        "experimentalDecorators": false,
+        "emitDecoratorMetadata": false,
+        "lib": [
+            "ES2022",
+            "ESNext.Decorators"
+        ]
+    },
+    "include": [
+        "src/**/*.ts",
+        "tests/**/*.ts"
+    ],
+    "exclude": [
+        "node_modules",
+        "dist"
+    ]
+}
