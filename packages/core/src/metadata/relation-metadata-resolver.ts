@@ -79,6 +79,11 @@ export class RelationMetadataResolver {
             )
         );
 
+        for (const relation of relations) {
+            this.validateRelationOwnership(entity, relation);
+            this.validateReferentialOptions(entity, relation);
+        }
+
         return {
             target,
             relations: Object.freeze(relations)
@@ -412,5 +417,100 @@ export class RelationMetadataResolver {
             );
         }
     }
+
+
+    private validateRelationOwnership(
+        source: EntityDefinition,
+        relation: RelationMetadata
+    ): void {
+        if (
+            relation.type !== 'one-to-one' &&
+            relation.type !== 'many-to-many'
+        ) {
+            return;
+        }
+
+        if (relation.inversePropertyKey === undefined) {
+            // Una relación unidireccional necesita propietario.
+            if (!relation.isOwningSide) {
+                throw new MetadataError(
+                    `Unidirectional ${relation.type} relation ` +
+                    `${source.target.name}.${String(relation.propertyKey)} ` +
+                    `must be the owning side.`
+                );
+            }
+
+            return;
+        }
+
+        const destinationTarget = relation.target();
+        const destination = this.requireEntity(destinationTarget);
+
+        const inverseDeclarations =
+            getRelationDeclarations(destination.target);
+
+        const inverse = inverseDeclarations.relations.find(
+            item =>
+                item.propertyKey === relation.inversePropertyKey
+        );
+
+        if (!inverse) {
+            throw new MetadataError(
+                `Inverse relation not found: ` +
+                `${destination.target.name}.` +
+                String(relation.inversePropertyKey)
+            );
+        }
+
+        const inverseJoins = inverseDeclarations.joinColumns.some(
+            item => item.propertyKey === inverse.propertyKey
+        );
+
+        const inverseTables = inverseDeclarations.joinTables.some(
+            item => item.propertyKey === inverse.propertyKey
+        );
+
+        const inverseOwning =
+            relation.type === 'one-to-one'
+                ? inverseJoins
+                : inverseTables;
+
+        if (relation.isOwningSide === inverseOwning) {
+            const reason = relation.isOwningSide
+                ? 'Both sides are configured as owners.'
+                : 'Neither side is configured as owner.';
+
+            throw new MetadataError(
+                `Invalid ${relation.type} ownership between ` +
+                `${source.target.name}.${String(relation.propertyKey)} ` +
+                `and ${destination.target.name}.` +
+                `${String(inverse.propertyKey)}. ${reason}`
+            );
+        }
+    }
+
+
+
+    private validateReferentialOptions(
+        source: EntityDefinition,
+        relation: RelationMetadata
+    ): void {
+        if (
+            relation.isOwningSide ||
+            (
+                relation.onDelete === undefined &&
+                relation.onUpdate === undefined
+            )
+        ) {
+            return;
+        }
+
+        throw new MetadataError(
+            `Referential actions are not allowed on the inverse side: ` +
+            `${source.target.name}.${String(relation.propertyKey)}`
+        );
+    }
+
+
 
 }

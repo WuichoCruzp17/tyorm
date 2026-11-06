@@ -9,6 +9,7 @@ import {
     ManyToMany,
     JoinColumn,
     JoinTable,
+    OneToOne,
     getEntityMetadata,
     ensureSymbolMetadata
 } from '../src/decorators';
@@ -265,4 +266,244 @@ describe('RelationMetadataResolver', () => {
         expect(() => resolver.resolve(Order))
             .toThrow(/Function inverse selectors/);
     });
+
+
+    it('should accept one-to-one with one owner', () => {
+        @Entity()
+        class Profile {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+
+            @OneToOne(() => User, 'profile')
+            user!: User;
+        }
+
+        @Entity()
+        class User {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+
+            @OneToOne(() => Profile, 'user')
+            @JoinColumn({
+                name: 'profile_id',
+                referencedColumnName: 'id'
+            })
+            profile!: Profile;
+        }
+
+        const resolver = new RelationMetadataResolver([
+            getEntityMetadata(User),
+            getEntityMetadata(Profile)
+        ]);
+
+        const userRelation = resolver.resolve(User).relations[0];
+        const profileRelation = resolver.resolve(Profile).relations[0];
+
+        expect(userRelation?.isOwningSide).toBe(true);
+        expect(profileRelation?.isOwningSide).toBe(false);
+    });
+
+    it('should reject one-to-one with two owners', () => {
+        @Entity()
+        class Profile {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+
+            @OneToOne(() => User, 'profile')
+            @JoinColumn({ name: 'user_id' })
+            user!: User;
+        }
+
+        @Entity()
+        class User {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+
+            @OneToOne(() => Profile, 'user')
+            @JoinColumn({ name: 'profile_id' })
+            profile!: Profile;
+        }
+
+        const resolver = new RelationMetadataResolver([
+            getEntityMetadata(User),
+            getEntityMetadata(Profile)
+        ]);
+
+        expect(() => resolver.resolve(User))
+            .toThrow(/Both sides are configured as owners/);
+    });
+
+    it('should reject one-to-one with two owners', () => {
+        @Entity()
+        class Profile {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+
+            @OneToOne(() => User, 'profile')
+            @JoinColumn({ name: 'user_id' })
+            user!: User;
+        }
+
+        @Entity()
+        class User {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+
+            @OneToOne(() => Profile, 'user')
+            @JoinColumn({ name: 'profile_id' })
+            profile!: Profile;
+        }
+
+        const resolver = new RelationMetadataResolver([
+            getEntityMetadata(User),
+            getEntityMetadata(Profile)
+        ]);
+
+        expect(() => resolver.resolve(User))
+            .toThrow(/Both sides are configured as owners/);
+    });
+
+    it('should reject one-to-one without owner', () => {
+        @Entity()
+        class Profile {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+
+            @OneToOne(() => User, 'profile')
+            user!: User;
+        }
+
+        @Entity()
+        class User {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+
+            @OneToOne(() => Profile, 'user')
+            profile!: Profile;
+        }
+
+        const resolver = new RelationMetadataResolver([
+            getEntityMetadata(User),
+            getEntityMetadata(Profile)
+        ]);
+
+        expect(() => resolver.resolve(User))
+            .toThrow(/Neither side is configured as owner/);
+    });
+
+
+    it('should reject many-to-many with two owners', () => {
+        @Entity()
+        class Role {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+
+            @ManyToMany(() => User, 'roles')
+            @JoinTable({ name: 'role_users' })
+            users!: User[];
+        }
+
+        @Entity()
+        class User {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+
+            @ManyToMany(() => Role, 'users')
+            @JoinTable({ name: 'user_roles' })
+            roles!: Role[];
+        }
+
+        const resolver = new RelationMetadataResolver([
+            getEntityMetadata(User),
+            getEntityMetadata(Role)
+        ]);
+
+        expect(() => resolver.resolve(User))
+            .toThrow(/Both sides are configured as owners/);
+    });
+
+    it('should reject many-to-many without owner', () => {
+        @Entity()
+        class Role {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+
+            @ManyToMany(() => User, 'roles')
+            users!: User[];
+        }
+
+        @Entity()
+        class User {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+
+            @ManyToMany(() => Role, 'users')
+            roles!: Role[];
+        }
+
+        const resolver = new RelationMetadataResolver([
+            getEntityMetadata(User),
+            getEntityMetadata(Role)
+        ]);
+
+        expect(() => resolver.resolve(User))
+            .toThrow(/Neither side is configured as owner/);
+    });
+
+
+    it('should reject unidirectional many-to-many without owner', () => {
+        @Entity()
+        class Role {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+        }
+
+        @Entity()
+        class User {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+
+            @ManyToMany(() => Role)
+            roles!: Role[];
+        }
+
+        const resolver = new RelationMetadataResolver([
+            getEntityMetadata(User),
+            getEntityMetadata(Role)
+        ]);
+
+        expect(() => resolver.resolve(User))
+            .toThrow(/must be the owning side/);
+    });
+
+    it('should reject referential actions on inverse side', () => {
+        @Entity()
+        class User {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+
+            @OneToMany(() => Order, 'user', {
+                onDelete: 'CASCADE'
+            })
+            orders!: Order[];
+        }
+
+        @Entity()
+        class Order {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+
+            @ManyToOne(() => User, 'orders')
+            user!: User;
+        }
+
+        const resolver = new RelationMetadataResolver([
+            getEntityMetadata(User),
+            getEntityMetadata(Order)
+        ]);
+
+        expect(() => resolver.resolve(User))
+            .toThrow(/Referential actions are not allowed/);
+    });
+
 });
