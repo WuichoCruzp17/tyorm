@@ -19,6 +19,11 @@ import type {
     RelationDeclaration
 } from '../decorators/standard/relation-declaration';
 
+import {
+    freezeRelationMetadata
+} from './freeze-relation-metadata';
+
+
 type EntityDefinition = EntityMetadata<any>;
 
 export interface ResolvedEntityRelations {
@@ -44,6 +49,7 @@ export class RelationMetadataResolver {
         }
     }
 
+
     resolve(
         target: EntityTarget
     ): ResolvedEntityRelations {
@@ -51,6 +57,7 @@ export class RelationMetadataResolver {
         const declarations = getRelationDeclarations(target);
         const relationKeys = new Set<string | symbol>();
 
+        // 1. Validar relaciones duplicadas
         for (const relation of declarations.relations) {
             if (relationKeys.has(relation.propertyKey)) {
                 throw new MetadataError(
@@ -61,6 +68,7 @@ export class RelationMetadataResolver {
             relationKeys.add(relation.propertyKey);
         }
 
+        // 2. Validar configuraciones Join sin relación
         for (const join of [
             ...declarations.joinColumns,
             ...declarations.joinTables
@@ -72,6 +80,8 @@ export class RelationMetadataResolver {
                 );
             }
         }
+
+        // 3. Resolver los metadatos de las relaciones
         const relations = declarations.relations.map(
             declaration => this.resolveRelation(
                 entity,
@@ -79,16 +89,24 @@ export class RelationMetadataResolver {
             )
         );
 
+        // 4. Validar propietarios y acciones referenciales
         for (const relation of relations) {
             this.validateRelationOwnership(entity, relation);
             this.validateReferentialOptions(entity, relation);
         }
 
-        return {
+        // 5. NUEVO: Congelar cada relación y sus objetos internos
+        const frozenRelations = Object.freeze(
+            relations.map(freezeRelationMetadata)
+        );
+
+        // 6. NUEVO: Congelar también el resultado completo
+        return Object.freeze({
             target,
-            relations: Object.freeze(relations)
-        };
+            relations: frozenRelations
+        });
     }
+
 
     resolveAll(): readonly ResolvedEntityRelations[] {
         return Object.freeze(
@@ -251,6 +269,7 @@ export class RelationMetadataResolver {
     }
 
 
+
     private resolveJoinColumns(
         options: readonly JoinColumnOptions[] | undefined,
         destination: EntityDefinition
@@ -280,11 +299,23 @@ export class RelationMetadataResolver {
                 option.referencedColumnName ??
                 primaryKeys[index]?.columnName;
 
-            if (!referencedColumnName) {
+            if (referencedColumnName === undefined) {
                 throw new MetadataError(
                     'Cannot infer referenced join column.'
                 );
             }
+
+            const name = option.name ?? referencedColumnName;
+
+            this.validateDatabaseIdentifier(
+                name,
+                'Join column name'
+            );
+
+            this.validateDatabaseIdentifier(
+                referencedColumnName,
+                'Referenced column name'
+            );
 
             if (!primaryKeys.some(
                 key => key.columnName === referencedColumnName
@@ -296,7 +327,7 @@ export class RelationMetadataResolver {
             }
 
             return {
-                name: option.name ?? referencedColumnName,
+                name,
                 referencedColumnName
             };
         });
@@ -324,6 +355,8 @@ export class RelationMetadataResolver {
     }
 
 
+
+
     private resolveJoinTable(
         options: {
             readonly name?: string;
@@ -334,15 +367,32 @@ export class RelationMetadataResolver {
         source: EntityDefinition,
         destination: EntityDefinition
     ): JoinTableMetadata {
+
         const name =
             options.name ??
             `${source.tableName}_${destination.tableName}`;
 
+        // NUEVO: Validar el nombre de la tabla intermedia
+        this.validateDatabaseIdentifier(
+            name,
+            'Join table name'
+        );
+
+        // NUEVO: Validar el esquema cuando esté definido
+        if (options.schema !== undefined) {
+            this.validateDatabaseIdentifier(
+                options.schema,
+                'Join table schema'
+            );
+        }
+
+        // EXISTENTE: Resolver las columnas del propietario
         const joinColumns = this.resolveJoinColumns(
             options.joinColumns,
             source
         );
 
+        // EXISTENTE: Resolver las columnas de la entidad destino
         const inverseJoinColumns = this.resolveJoinColumns(
             options.inverseJoinColumns,
             destination
@@ -357,6 +407,7 @@ export class RelationMetadataResolver {
             inverseJoinColumns
         };
     }
+
 
 
     private validateInverseRelation(
@@ -512,5 +563,28 @@ export class RelationMetadataResolver {
     }
 
 
+
+    private validateDatabaseIdentifier(
+        value: string,
+        description: string
+    ): void {
+        if (value.length === 0 || value.trim().length === 0) {
+            throw new MetadataError(
+                `${description} cannot be empty.`
+            );
+        }
+
+        if (value !== value.trim()) {
+            throw new MetadataError(
+                `${description} cannot contain leading or trailing whitespace.`
+            );
+        }
+
+        if (value.includes('\0')) {
+            throw new MetadataError(
+                `${description} cannot contain null characters.`
+            );
+        }
+    }
 
 }

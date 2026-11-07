@@ -506,4 +506,235 @@ describe('RelationMetadataResolver', () => {
             .toThrow(/Referential actions are not allowed/);
     });
 
+
+    it('should accept complete composite join columns in any order', () => {
+        @Entity()
+        class User {
+            @PrimaryKey({ type: 'uuid' })
+            companyId!: string;
+
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+        }
+
+        @Entity()
+        class Order {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+
+            @ManyToOne(() => User)
+            @JoinColumn([
+                {
+                    name: 'user_id',
+                    referencedColumnName: 'id'
+                },
+                {
+                    name: 'company_id',
+                    referencedColumnName: 'companyId'
+                }
+            ])
+            user!: User;
+        }
+
+        const resolver = new RelationMetadataResolver([
+            getEntityMetadata(User),
+            getEntityMetadata(Order)
+        ]);
+
+        const relation = resolver.resolve(Order).relations[0];
+
+        expect(relation?.joinColumns).toEqual([
+            {
+                name: 'user_id',
+                referencedColumnName: 'id'
+            },
+            {
+                name: 'company_id',
+                referencedColumnName: 'companyId'
+            }
+        ]);
+    });
+
+
+    it('should reject duplicated referenced columns', () => {
+        @Entity()
+        class User {
+            @PrimaryKey({ type: 'uuid' })
+            companyId!: string;
+
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+        }
+
+        @Entity()
+        class Order {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+
+            @ManyToOne(() => User)
+            @JoinColumn([
+                {
+                    name: 'user_id',
+                    referencedColumnName: 'id'
+                },
+                {
+                    name: 'another_user_id',
+                    referencedColumnName: 'id'
+                }
+            ])
+            user!: User;
+        }
+
+        const resolver = new RelationMetadataResolver([
+            getEntityMetadata(User),
+            getEntityMetadata(Order)
+        ]);
+
+        expect(() => resolver.resolve(Order))
+            .toThrow(/Duplicate join column names/);
+    });
+
+
+    it('should reject empty join column names', () => {
+        @Entity()
+        class User {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+        }
+
+        @Entity()
+        class Order {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+
+            @ManyToOne(() => User)
+            @JoinColumn({
+                name: '   ',
+                referencedColumnName: 'id'
+            })
+            user!: User;
+        }
+
+        const resolver = new RelationMetadataResolver([
+            getEntityMetadata(User),
+            getEntityMetadata(Order)
+        ]);
+
+        expect(() => resolver.resolve(Order))
+            .toThrow(/Join column name cannot be empty/);
+    });
+
+
+    it('should accept unidirectional one-to-one with owner', () => {
+        @Entity()
+        class Profile {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+        }
+
+        @Entity()
+        class User {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+
+            @OneToOne(() => Profile)
+            @JoinColumn({
+                name: 'profile_id',
+                referencedColumnName: 'id'
+            })
+            profile!: Profile;
+        }
+
+        const resolver = new RelationMetadataResolver([
+            getEntityMetadata(User),
+            getEntityMetadata(Profile)
+        ]);
+
+        const relation = resolver.resolve(User).relations[0];
+
+        expect(relation?.isOwningSide).toBe(true);
+        expect(relation?.joinColumns[0]?.name)
+            .toBe('profile_id');
+    });
+
+
+    it('should reject unidirectional one-to-one without owner', () => {
+        @Entity()
+        class Profile {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+        }
+
+        @Entity()
+        class User {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+
+            @OneToOne(() => Profile)
+            profile!: Profile;
+        }
+
+        const resolver = new RelationMetadataResolver([
+            getEntityMetadata(User),
+            getEntityMetadata(Profile)
+        ]);
+
+        expect(() => resolver.resolve(User))
+            .toThrow(/must be the owning side/);
+    });
+
+
+    it('should deeply freeze resolved join table metadata', () => {
+        @Entity()
+        class Role {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+        }
+
+        @Entity()
+        class User {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+
+            @ManyToMany(() => Role)
+            @JoinTable({
+                name: 'user_roles',
+                joinColumns: [
+                    {
+                        name: 'user_id',
+                        referencedColumnName: 'id'
+                    }
+                ],
+                inverseJoinColumns: [
+                    {
+                        name: 'role_id',
+                        referencedColumnName: 'id'
+                    }
+                ]
+            })
+            roles!: Role[];
+        }
+
+        const resolver = new RelationMetadataResolver([
+            getEntityMetadata(User),
+            getEntityMetadata(Role)
+        ]);
+
+        const result = resolver.resolve(User);
+        const relation = result.relations[0];
+
+        expect(Object.isFrozen(result)).toBe(true);
+        expect(Object.isFrozen(result.relations)).toBe(true);
+        expect(Object.isFrozen(relation)).toBe(true);
+        expect(Object.isFrozen(relation?.joinTable)).toBe(true);
+        expect(Object.isFrozen(relation?.joinTable?.joinColumns))
+            .toBe(true);
+        expect(Object.isFrozen(
+            relation?.joinTable?.joinColumns[0]
+        )).toBe(true);
+        expect(Object.isFrozen(
+            relation?.joinTable?.inverseJoinColumns[0]
+        )).toBe(true);
+    });
+
 });
