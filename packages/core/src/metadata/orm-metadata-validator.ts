@@ -231,6 +231,7 @@ export class OrmMetadataValidator {
 
 
 
+
     private validateForeignKeyTypes(
         item: OrmEntityMetadata,
         entities: ReadonlyMap<EntityTarget, OrmEntityMetadata>
@@ -242,19 +243,23 @@ export class OrmMetadataValidator {
             ...source.columns
         ];
 
+        const sourceColumnMap = new Map(
+            sourceColumns.map(column => [
+                column.columnName,
+                column
+            ] as const)
+        );
+
         for (const relation of item.relations) {
             if (!relation.isOwningSide) {
                 continue;
             }
 
-            // ManyToMany utiliza una tabla intermedia.
             if (relation.type === 'many-to-many') {
                 continue;
             }
 
-            // El destino se obtiene mediante la factory.
             const targetConstructor = relation.target();
-
             const target = entities.get(targetConstructor);
 
             if (!target) {
@@ -266,32 +271,34 @@ export class OrmMetadataValidator {
                 );
             }
 
+            const primaryKeyMap = new Map(
+                target.entity.primaryKeys.map(column => [
+                    column.columnName,
+                    column
+                ] as const)
+            );
+
             for (const joinColumn of relation.joinColumns) {
-                // Comprobar primero que la referencia exista,
-                // incluso cuando la columna local sea inferida.
                 const referencedColumn =
-                    target.entity.primaryKeys.find(
-                        column =>
-                            column.columnName ===
-                            joinColumn.referencedColumnName
+                    primaryKeyMap.get(
+                        joinColumn.referencedColumnName
                     );
 
                 if (!referencedColumn) {
                     throw new MetadataError(
-                        `Referenced primary key column ` +
-                        `"${joinColumn.referencedColumnName}" ` +
-                        `was not found in entity ` +
+                        `Invalid foreign key reference in ` +
+                        `"${source.target.name}.` +
+                        `${String(relation.propertyKey)}": ` +
+                        `column "${joinColumn.referencedColumnName}" ` +
+                        `is not a primary key of ` +
                         `"${targetConstructor.name}".`
                     );
                 }
 
-                // Buscar columna física explícita.
-                const localColumn = sourceColumns.find(
-                    column =>
-                        column.columnName === joinColumn.name
-                );
+                const localColumn =
+                    sourceColumnMap.get(joinColumn.name);
 
-                // Una FK inferida hereda el tipo de la PK.
+                // La FK inferida obtiene su tipo de la PK.
                 if (!localColumn) {
                     continue;
                 }
@@ -301,16 +308,19 @@ export class OrmMetadataValidator {
                         `Foreign key type mismatch in ` +
                         `"${source.target.name}.` +
                         `${String(relation.propertyKey)}": ` +
-                        `column "${localColumn.columnName}" ` +
-                        `has type "${localColumn.type}", ` +
-                        `but referenced column ` +
-                        `"${referencedColumn.columnName}" ` +
-                        `has type "${referencedColumn.type}".`
+                        `local column "${joinColumn.name}" ` +
+                        `(${localColumn.type}) references ` +
+                        `"${targetConstructor.name}.` +
+                        `${referencedColumn.columnName}" ` +
+                        `(${referencedColumn.type}).`
                     );
                 }
             }
         }
     }
+
+
+
 
 
 }

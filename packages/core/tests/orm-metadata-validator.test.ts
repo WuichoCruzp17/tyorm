@@ -470,4 +470,189 @@ describe('OrmMetadataValidator', () => {
         ])).toThrow(/Foreign key type mismatch/);
     });
 
+
+it('should accept composite FK with custom physical names', () => {
+    @Entity({ name: 'users' })
+    class User {
+        @PrimaryKey({
+            type: 'uuid',
+            name: 'company_id'
+        })
+        companyId!: string;
+
+        @PrimaryKey({
+            type: 'uuid',
+            name: 'user_id'
+        })
+        userId!: string;
+    }
+
+    @Entity({ name: 'orders' })
+    class Order {
+        @PrimaryKey({
+            type: 'uuid',
+            name: 'order_id'
+        })
+        id!: string;
+
+        @Column({
+            type: 'uuid',
+            name: 'customer_company_id'
+        })
+        customerCompanyId!: string;
+
+        @Column({
+            type: 'uuid',
+            name: 'customer_user_id'
+        })
+        customerUserId!: string;
+
+        @ManyToOne(() => User)
+        @JoinColumn([
+            {
+                name: 'customer_company_id',
+                referencedColumnName: 'company_id'
+            },
+            {
+                name: 'customer_user_id',
+                referencedColumnName: 'user_id'
+            }
+        ])
+        customer!: User;
+    }
+
+    const model = new OrmMetadataModel([
+        getEntityMetadata(User),
+        getEntityMetadata(Order)
+    ]);
+
+    const relation =
+        model.getEntity(Order).relations[0];
+
+    expect(
+        relation?.joinColumns.map(column => column.name)
+    ).toEqual([
+        'customer_company_id',
+        'customer_user_id'
+    ]);
+
+    expect(
+        relation?.joinColumns.map(
+            column => column.referencedColumnName
+        )
+    ).toEqual([
+        'company_id',
+        'user_id'
+    ]);
+});
+
+it('should reject incompatible type in composite FK', () => {
+    @Entity({ name: 'users' })
+    class User {
+        @PrimaryKey({
+            type: 'uuid',
+            name: 'company_id'
+        })
+        companyId!: string;
+
+        @PrimaryKey({
+            type: 'uuid',
+            name: 'user_id'
+        })
+        userId!: string;
+    }
+
+    @Entity({ name: 'orders' })
+    class Order {
+        @PrimaryKey({
+            type: 'uuid',
+            name: 'order_id'
+        })
+        id!: string;
+
+        @Column({
+            type: 'uuid',
+            name: 'customer_company_id'
+        })
+        customerCompanyId!: string;
+
+        @Column({
+            type: 'integer',
+            name: 'customer_user_id'
+        })
+        customerUserId!: number;
+
+        @ManyToOne(() => User)
+        @JoinColumn([
+            {
+                name: 'customer_company_id',
+                referencedColumnName: 'company_id'
+            },
+            {
+                name: 'customer_user_id',
+                referencedColumnName: 'user_id'
+            }
+        ])
+        customer!: User;
+    }
+
+    expect(() => new OrmMetadataModel([
+        getEntityMetadata(User),
+        getEntityMetadata(Order)
+    ])).toThrow(/Foreign key type mismatch/);
+});
+
+
+it('should reject composite FK referencing non-primary column', () => {
+    @Entity({ name: 'users' })
+    class User {
+        @PrimaryKey({
+            type: 'uuid',
+            name: 'company_id'
+        })
+        companyId!: string;
+
+        @PrimaryKey({
+            type: 'uuid',
+            name: 'user_id'
+        })
+        userId!: string;
+
+        @Column({
+            type: 'string',
+            name: 'email'
+        })
+        email!: string;
+    }
+
+    @Entity({ name: 'orders' })
+    class Order {
+        @PrimaryKey({
+            type: 'uuid',
+            name: 'order_id'
+        })
+        id!: string;
+
+        @ManyToOne(() => User)
+        @JoinColumn([
+            {
+                name: 'customer_company_id',
+                referencedColumnName: 'company_id'
+            },
+            {
+                name: 'customer_email',
+                referencedColumnName: 'email'
+            }
+        ])
+        customer!: User;
+    }
+
+    expect(() => new OrmMetadataModel([
+        getEntityMetadata(User),
+        getEntityMetadata(Order)
+    ])).toThrow();
+});
+
+
+
 });
