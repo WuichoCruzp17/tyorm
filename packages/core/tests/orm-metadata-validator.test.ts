@@ -13,7 +13,8 @@ import {
     getEntityMetadata,
     ensureSymbolMetadata,
     Column,
-    ManyToOne
+    ManyToOne,
+    JoinColumn
 } from '../src/decorators';
 
 import {
@@ -376,5 +377,97 @@ describe('OrmMetadataValidator', () => {
         );
     });
 
+
+    it('should resolve foreign key target using target factory', () => {
+        @Entity({ name: 'users' })
+        class User {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+        }
+
+        @Entity({ name: 'orders' })
+        class Order {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+
+            @ManyToOne(() => User)
+            user!: User;
+        }
+
+        const model = new OrmMetadataModel([
+            getEntityMetadata(User),
+            getEntityMetadata(Order)
+        ]);
+
+        const relation = model.getEntity(Order).relations[0];
+
+        expect(relation?.target()).toBe(User);
+    });
+
+    it('should accept matching foreign key types', () => {
+        @Entity({ name: 'users' })
+        class User {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+        }
+
+        @Entity({ name: 'orders' })
+        class Order {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+
+            @Column({
+                type: 'uuid',
+                name: 'user_id'
+            })
+            userId!: string;
+
+            @ManyToOne(() => User)
+            @JoinColumn({
+                name: 'user_id',
+                referencedColumnName: 'id'
+            })
+            user!: User;
+        }
+
+        const model = new OrmMetadataModel([
+            getEntityMetadata(User),
+            getEntityMetadata(Order)
+        ]);
+
+        expect(model.getEntity(Order).relations)
+            .toHaveLength(1);
+    });
+    it('should reject incompatible foreign key types', () => {
+        @Entity({ name: 'users' })
+        class User {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+        }
+
+        @Entity({ name: 'orders' })
+        class Order {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+
+            @Column({
+                type: 'integer',
+                name: 'user_id'
+            })
+            userId!: number;
+
+            @ManyToOne(() => User)
+            @JoinColumn({
+                name: 'user_id',
+                referencedColumnName: 'id'
+            })
+            user!: User;
+        }
+
+        expect(() => new OrmMetadataModel([
+            getEntityMetadata(User),
+            getEntityMetadata(Order)
+        ])).toThrow(/Foreign key type mismatch/);
+    });
 
 });

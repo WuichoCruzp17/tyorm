@@ -1,6 +1,7 @@
 
 import type {
     EntityMetadata,
+    EntityTarget,
     RelationMetadata
 } from './contracts';
 
@@ -12,15 +13,48 @@ import { MetadataError } from './metadata-error';
 
 export class OrmMetadataValidator {
 
+
     validate(
         entities: readonly OrmEntityMetadata[]
     ): void {
         const occupiedTables = new Map<string, string>();
-        // Validar conflictos entre propiedades
+
+        // =====================================================
+        // 1. Construir índice de entidades
+        // =====================================================
+
+        const entityMap = new Map<
+            EntityTarget,
+            OrmEntityMetadata
+        >();
+
+        for (const item of entities) {
+            entityMap.set(item.entity.target, item);
+        }
+
+        // =====================================================
+        // 2. Validar conflictos entre propiedades
+        // =====================================================
+
         for (const item of entities) {
             this.validatePropertyCollisions(item);
         }
-        // 1. Registrar tablas de entidades.
+
+        // =====================================================
+        // 3. Validar tipos de claves foráneas
+        // =====================================================
+
+        for (const item of entities) {
+            this.validateForeignKeyTypes(
+                item,
+                entityMap
+            );
+        }
+
+        // =====================================================
+        // 4. Registrar tablas físicas de entidades
+        // =====================================================
+
         for (const item of entities) {
             const entity = item.entity;
 
@@ -42,9 +76,13 @@ export class OrmMetadataValidator {
             );
         }
 
-        // 2. Registrar tablas intermedias.
+        // =====================================================
+        // 5. Validar y registrar tablas intermedias
+        // =====================================================
+
         for (const item of entities) {
             for (const relation of item.relations) {
+
                 if (!relation.isOwningSide) {
                     continue;
                 }
@@ -64,6 +102,8 @@ export class OrmMetadataValidator {
                     );
                 }
 
+                // Heredar el esquema de la entidad propietaria
+                // cuando la tabla intermedia no declara uno.
                 const schema =
                     joinTable.schema ?? item.entity.schema;
 
@@ -76,6 +116,8 @@ export class OrmMetadataValidator {
                     `relation ${item.entity.target.name}.` +
                     String(relation.propertyKey);
 
+                // Detectar colisiones con tablas de entidades
+                // y otras tablas intermedias.
                 this.registerTable(
                     occupiedTables,
                     key,
@@ -86,6 +128,8 @@ export class OrmMetadataValidator {
                     )
                 );
 
+                // Detectar columnas físicas duplicadas
+                // entre joinColumns e inverseJoinColumns.
                 this.validateJoinTableColumns(
                     item.entity,
                     relation
@@ -93,6 +137,7 @@ export class OrmMetadataValidator {
             }
         }
     }
+
 
     private registerTable(
         occupied: Map<string, string>,
@@ -183,5 +228,89 @@ export class OrmMetadataValidator {
             }
         }
     }
+
+
+
+    private validateForeignKeyTypes(
+        item: OrmEntityMetadata,
+        entities: ReadonlyMap<EntityTarget, OrmEntityMetadata>
+    ): void {
+        const source = item.entity;
+
+        const sourceColumns = [
+            ...source.primaryKeys,
+            ...source.columns
+        ];
+
+        for (const relation of item.relations) {
+            if (!relation.isOwningSide) {
+                continue;
+            }
+
+            // ManyToMany utiliza una tabla intermedia.
+            if (relation.type === 'many-to-many') {
+                continue;
+            }
+
+            // El destino se obtiene mediante la factory.
+            const targetConstructor = relation.target();
+
+            const target = entities.get(targetConstructor);
+
+            if (!target) {
+                throw new MetadataError(
+                    `Target entity "${targetConstructor.name}" ` +
+                    `for relation "${source.target.name}.` +
+                    `${String(relation.propertyKey)}" ` +
+                    `is not registered.`
+                );
+            }
+
+            for (const joinColumn of relation.joinColumns) {
+                // Comprobar primero que la referencia exista,
+                // incluso cuando la columna local sea inferida.
+                const referencedColumn =
+                    target.entity.primaryKeys.find(
+                        column =>
+                            column.columnName ===
+                            joinColumn.referencedColumnName
+                    );
+
+                if (!referencedColumn) {
+                    throw new MetadataError(
+                        `Referenced primary key column ` +
+                        `"${joinColumn.referencedColumnName}" ` +
+                        `was not found in entity ` +
+                        `"${targetConstructor.name}".`
+                    );
+                }
+
+                // Buscar columna física explícita.
+                const localColumn = sourceColumns.find(
+                    column =>
+                        column.columnName === joinColumn.name
+                );
+
+                // Una FK inferida hereda el tipo de la PK.
+                if (!localColumn) {
+                    continue;
+                }
+
+                if (localColumn.type !== referencedColumn.type) {
+                    throw new MetadataError(
+                        `Foreign key type mismatch in ` +
+                        `"${source.target.name}.` +
+                        `${String(relation.propertyKey)}": ` +
+                        `column "${localColumn.columnName}" ` +
+                        `has type "${localColumn.type}", ` +
+                        `but referenced column ` +
+                        `"${referencedColumn.columnName}" ` +
+                        `has type "${referencedColumn.type}".`
+                    );
+                }
+            }
+        }
+    }
+
 
 }
