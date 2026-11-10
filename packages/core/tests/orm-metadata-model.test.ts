@@ -19,8 +19,13 @@ import {
 
 import {
     MetadataError,
+    OrmEntityMetadata,
     OrmMetadataModel
 } from '../src/metadata';
+
+import type { EntityMetadata } from '../src/metadata/contracts/entity-metadata';
+import type { ColumnMetadata } from '../src/metadata/contracts/column-metadata';
+import type { PrimaryKeyMetadata } from '../src/metadata/contracts/primary-key-metadata';
 
 ensureSymbolMetadata();
 
@@ -294,6 +299,291 @@ describe('OrmMetadataModel', () => {
             .toEqual(source.primaryKeys);
     });
 
+
+    it('should return stable immutable metadata references', () => {
+        @Entity({ name: 'users' })
+        class User {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+
+            @Column({ type: 'string' })
+            name!: string;
+        }
+
+        const model = new OrmMetadataModel([
+            getEntityMetadata(User)
+        ]);
+
+        const first = model.getEntity(User);
+        const second = model.getEntity(User);
+
+        expect(first).toBe(second);
+        expect(first.entity).toBe(second.entity);
+        expect(first.entity.columns).toBe(
+            second.entity.columns
+        );
+
+        expect(Object.isFrozen(first)).toBe(true);
+        expect(Object.isFrozen(first.entity)).toBe(true);
+    });
+
+
+
+    it('should remain stable when source metadata is mutated', () => {
+        @Entity({ name: 'users' })
+        class User {
+            @PrimaryKey({
+                type: 'uuid',
+                name: 'user_id'
+            })
+            id!: string;
+
+            @Column({
+                type: 'string',
+                name: 'full_name'
+            })
+            name!: string;
+        }
+
+        // 1. Obtener los metadatos originales del registro.
+        const registered = getEntityMetadata(User);
+
+        // 2. Crear copias mutables independientes.
+        // Conservamos todas las propiedades de los contratos.
+        const sourceColumns = registered.columns.map(
+            column => ({ ...column })
+        );
+
+        const sourcePrimaryKeys = registered.primaryKeys.map(
+            primaryKey => ({ ...primaryKey })
+        );
+
+        // 3. Construir una fuente independiente.
+        const source = {
+            ...registered,
+            columns: sourceColumns,
+            primaryKeys: sourcePrimaryKeys
+        };
+
+        // 4. Construir el modelo ORM.
+        // El modelo debe crear sus propios snapshots.
+        const model = new OrmMetadataModel([source]);
+
+        // 5. Comprobar que los metadatos originales
+        // y los del modelo no comparten referencias.
+        const metadata = model.getEntity(User).entity;
+
+        expect(metadata).not.toBe(source);
+
+        expect(metadata.columns).not.toBe(sourceColumns);
+
+        expect(metadata.primaryKeys)
+            .not.toBe(sourcePrimaryKeys);
+
+        // 6. Modificar los metadatos externos
+        // después de construir el modelo.
+        sourceColumns[0]!.columnName = 'modified_name';
+
+        sourcePrimaryKeys[0]!.columnName = 'modified_id';
+
+        // Agregar una columna adicional a la fuente.
+        sourceColumns.push({
+            ...sourceColumns[0]!,
+            propertyKey: 'extra',
+            columnName: 'extra'
+        });
+
+        // 7. Verificar que el modelo conserva
+        // sus valores originales.
+        expect(metadata.columns).toHaveLength(1);
+
+        expect(metadata.columns[0]?.columnName)
+            .toBe('full_name');
+
+        expect(metadata.primaryKeys[0]?.columnName)
+            .toBe('user_id');
+
+        // 8. Verificar que los snapshots
+        // permanecen congelados.
+        expect(Object.isFrozen(metadata)).toBe(true);
+
+        expect(Object.isFrozen(metadata.columns))
+            .toBe(true);
+
+        expect(Object.isFrozen(metadata.primaryKeys))
+            .toBe(true);
+
+        expect(Object.isFrozen(metadata.columns[0]))
+            .toBe(true);
+
+        expect(Object.isFrozen(metadata.primaryKeys[0]))
+            .toBe(true);
+
+        // 9. Una segunda recuperación debe devolver
+        // exactamente el mismo snapshot.
+        const second = model.getEntity(User).entity;
+
+        expect(second).toBe(metadata);
+
+        expect(second.columns[0]?.columnName)
+            .toBe('full_name');
+
+        expect(second.primaryKeys[0]?.columnName)
+            .toBe('user_id');
+    });
+
+
+    it('should protect returned entity collections', () => {
+        @Entity({ name: 'users' })
+        class User {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+        }
+
+        const model = new OrmMetadataModel([
+            getEntityMetadata(User)
+        ]);
+
+        const entities = model.getEntities();
+
+        expect(Object.isFrozen(entities)).toBe(true);
+        expect(entities).toHaveLength(1);
+
+        expect(() => {
+            (entities as OrmEntityMetadata[]).push(
+                entities[0]!
+            );
+        }).toThrow(TypeError);
+
+        expect(model.getEntities()).toHaveLength(1);
+    });
+
+
+    it('should accept distinct self-referencing foreign keys', () => {
+        @Entity({ name: 'employees' })
+        class Employee {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+
+            @ManyToOne(() => Employee)
+            @JoinColumn({
+                name: 'manager_id',
+                referencedColumnName: 'id'
+            })
+            manager!: Employee;
+
+            @ManyToOne(() => Employee)
+            @JoinColumn({
+                name: 'mentor_id',
+                referencedColumnName: 'id'
+            })
+            mentor!: Employee;
+        }
+
+        const model = new OrmMetadataModel([
+            getEntityMetadata(Employee)
+        ]);
+
+        const relations =
+            model.getEntity(Employee).relations;
+
+        expect(relations).toHaveLength(2);
+
+        expect(
+            relations.map(
+                relation => relation.joinColumns[0]?.name
+            )
+        ).toEqual([
+            'manager_id',
+            'mentor_id'
+        ]);
+    });
+
+
+    it('should reject duplicate self-referencing foreign keys', () => {
+        @Entity({ name: 'employees' })
+        class Employee {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+
+            @ManyToOne(() => Employee)
+            @JoinColumn({
+                name: 'manager_id',
+                referencedColumnName: 'id'
+            })
+            manager!: Employee;
+
+            @ManyToOne(() => Employee)
+            @JoinColumn({
+                name: 'manager_id',
+                referencedColumnName: 'id'
+            })
+            mentor!: Employee;
+        }
+
+        expect(() => new OrmMetadataModel([
+            getEntityMetadata(Employee)
+        ])).toThrow(/Duplicate local join column/);
+    });
+
+
+    it('should resolve relations independently of entity order', () => {
+        @Entity({ name: 'users' })
+        class User {
+            @PrimaryKey({
+                type: 'uuid',
+                name: 'user_id'
+            })
+            id!: string;
+        }
+
+        @Entity({ name: 'orders' })
+        class Order {
+            @PrimaryKey({
+                type: 'uuid',
+                name: 'order_id'
+            })
+            id!: string;
+
+            @ManyToOne(() => User)
+            @JoinColumn({
+                name: 'customer_id',
+                referencedColumnName: 'user_id'
+            })
+            customer!: User;
+        }
+
+        const userMetadata = getEntityMetadata(User);
+        const orderMetadata = getEntityMetadata(Order);
+
+        const first = new OrmMetadataModel([
+            userMetadata,
+            orderMetadata
+        ]);
+
+        const second = new OrmMetadataModel([
+            orderMetadata,
+            userMetadata
+        ]);
+
+        const firstRelation =
+            first.getEntity(Order).relations[0]!;
+
+        const secondRelation =
+            second.getEntity(Order).relations[0]!;
+
+        expect(firstRelation.type)
+            .toBe(secondRelation.type);
+
+        expect(firstRelation.isOwningSide)
+            .toBe(secondRelation.isOwningSide);
+
+        expect(firstRelation.target())
+            .toBe(secondRelation.target());
+
+        expect(firstRelation.joinColumns)
+            .toStrictEqual(secondRelation.joinColumns);
+    });
 
 
 });
