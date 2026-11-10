@@ -55,3 +55,5 @@ export {
 export type {
     EntityRelationDeclarations
 } from './decorators';
+
+export * from './query';
