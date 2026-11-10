@@ -828,4 +828,133 @@ describe('OrmMetadataValidator', () => {
     });
 
 
+    it('should reject two owning relations sharing the same FK column', () => {
+        @Entity({ name: 'users' })
+        class User {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+        }
+
+        @Entity({ name: 'orders' })
+        class Order {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+
+            @ManyToOne(() => User)
+            @JoinColumn({
+                name: 'owner_id',
+                referencedColumnName: 'id'
+            })
+            owner!: User;
+
+            @ManyToOne(() => User)
+            @JoinColumn({
+                name: 'owner_id',
+                referencedColumnName: 'id'
+            })
+            reviewer!: User;
+        }
+
+        expect(() => new OrmMetadataModel([
+            getEntityMetadata(User),
+            getEntityMetadata(Order)
+        ])).toThrow(/Duplicate local join column "owner_id"/);
+    });
+
+
+    it('should accept owning relations with distinct FK columns', () => {
+        @Entity({ name: 'users' })
+        class User {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+        }
+
+        @Entity({ name: 'orders' })
+        class Order {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+
+            @ManyToOne(() => User)
+            @JoinColumn({
+                name: 'owner_id',
+                referencedColumnName: 'id'
+            })
+            owner!: User;
+
+            @ManyToOne(() => User)
+            @JoinColumn({
+                name: 'reviewer_id',
+                referencedColumnName: 'id'
+            })
+            reviewer!: User;
+        }
+
+        const model = new OrmMetadataModel([
+            getEntityMetadata(User),
+            getEntityMetadata(Order)
+        ]);
+
+        expect(model.getEntity(Order).relations)
+            .toHaveLength(2);
+    });
+
+
+    it('should reject overlapping composite FK columns', () => {
+        @Entity({ name: 'users' })
+        class User {
+            @PrimaryKey({
+                type: 'uuid',
+                name: 'company_id'
+            })
+            companyId!: string;
+
+            @PrimaryKey({
+                type: 'uuid',
+                name: 'user_id'
+            })
+            userId!: string;
+        }
+
+        @Entity({ name: 'orders' })
+        class Order {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+
+            @ManyToOne(() => User)
+            @JoinColumn([
+                {
+                    name: 'owner_company_id',
+                    referencedColumnName: 'company_id'
+                },
+                {
+                    name: 'owner_user_id',
+                    referencedColumnName: 'user_id'
+                }
+            ])
+            owner!: User;
+
+            @ManyToOne(() => User)
+            @JoinColumn([
+                {
+                    name: 'owner_company_id',
+                    referencedColumnName: 'company_id'
+                },
+                {
+                    name: 'reviewer_user_id',
+                    referencedColumnName: 'user_id'
+                }
+            ])
+            reviewer!: User;
+        }
+
+        expect(() => new OrmMetadataModel([
+            getEntityMetadata(User),
+            getEntityMetadata(Order)
+        ])).toThrow(
+            /Duplicate local join column "owner_company_id"/
+        );
+    });
+
+
+
 });

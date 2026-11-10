@@ -52,11 +52,16 @@ export class OrmMetadataValidator {
         }
 
         // =====================================================
-        // 5. Validar propiedad de escritura de columnas FK
+        // 4. Validar propiedad de escritura de columnas FK
         // =====================================================
 
         for (const item of entities) {
             this.validateSharedColumnWriteOwnership(item);
+        }
+
+        // 5. Detectar conflictos entre relaciones propietarias.
+        for (const item of entities) {
+            this.validateRelationWriteOwnership(item);
         }
 
         // =====================================================
@@ -412,6 +417,65 @@ export class OrmMetadataValidator {
         }
     }
 
+
+    private validateRelationWriteOwnership(
+        item: OrmEntityMetadata
+    ): void {
+        const entity = item.entity;
+
+        // Columna física -> relación que controla su escritura.
+        const columnOwners = new Map<string, string>();
+
+        for (const relation of item.relations) {
+            if (!relation.isOwningSide) {
+                continue;
+            }
+
+            if (relation.type === 'many-to-many') {
+                continue;
+            }
+
+            const relationName =
+                `${entity.target.name}.` +
+                String(relation.propertyKey);
+
+            // Evita también columnas duplicadas dentro
+            // de una misma relación.
+            const localColumns = new Set<string>();
+
+            for (const joinColumn of relation.joinColumns) {
+                const columnName = joinColumn.name;
+
+                if (localColumns.has(columnName)) {
+                    throw new MetadataError(
+                        `Duplicate foreign key column ` +
+                        `"${columnName}" in relation ` +
+                        `"${relationName}".`
+                    );
+                }
+
+                localColumns.add(columnName);
+
+                const previousOwner =
+                    columnOwners.get(columnName);
+
+                if (previousOwner !== undefined) {
+                    throw new MetadataError(
+                        `Foreign key write ownership conflict: ` +
+                        `column "${columnName}" in entity ` +
+                        `"${entity.target.name}" is owned by ` +
+                        `both "${previousOwner}" and ` +
+                        `"${relationName}".`
+                    );
+                }
+
+                columnOwners.set(
+                    columnName,
+                    relationName
+                );
+            }
+        }
+    }
 
 
 

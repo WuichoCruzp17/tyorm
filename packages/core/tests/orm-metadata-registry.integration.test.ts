@@ -139,7 +139,9 @@ describe('OrmMetadataModel + MetadataRegistry', () => {
         const registered = registry.get(User);
         const consolidated = model.getEntity(User);
 
-        expect(consolidated.entity).toBe(registered);
+        expect(consolidated.entity).not.toBe(registered);
+
+        expect(consolidated.entity).toStrictEqual(registered);
         expect(Object.isFrozen(consolidated.entity)).toBe(true);
         expect(Object.isFrozen(consolidated.entity.primaryKeys))
             .toBe(true);

@@ -20,6 +20,8 @@ import {
 
 import { MetadataRegistry } from './metadata-registry';
 
+import { freezeOrmEntityMetadata } from './immutable-metadata';
+
 export class OrmMetadataModel {
     private readonly entities =
         new Map<EntityTarget, OrmEntityMetadata>();
@@ -38,7 +40,7 @@ export class OrmMetadataModel {
             );
 
             const ormEntity: OrmEntityMetadata =
-                Object.freeze({
+                freezeOrmEntityMetadata({
                     entity: metadata,
                     relations: resolved.relations
                 });
