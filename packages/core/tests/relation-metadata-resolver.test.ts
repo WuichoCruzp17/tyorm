@@ -14,7 +14,7 @@ import {
     Column,
 } from "../src/decorators";
 
-import { MetadataError, RelationMetadataResolver } from "../src/metadata";
+import { MetadataError, OrmMetadataModel, RelationMetadataResolver } from "../src/metadata";
 
 ensureSymbolMetadata();
 describe("RelationMetadataResolver", () => {
@@ -1064,6 +1064,89 @@ describe("RelationMetadataResolver", () => {
 
         expect(joinTable?.inverseJoinColumns[0]?.name)
             .toBe('child_user_id');
+    });
+
+
+    it('should support single and composite JoinColumn options', () => {
+        @Entity({ name: 'users' })
+        class User {
+            @PrimaryKey({
+                type: 'uuid',
+                name: 'company_id'
+            })
+            companyId!: string;
+
+            @PrimaryKey({
+                type: 'uuid',
+                name: 'user_id'
+            })
+            userId!: string;
+        }
+
+        @Entity({ name: 'departments' })
+        class Department {
+            @PrimaryKey({
+                type: 'uuid',
+                name: 'department_id'
+            })
+            id!: string;
+        }
+
+        @Entity({ name: 'orders' })
+        class Order {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+
+            @ManyToOne(() => Department)
+            @JoinColumn({
+                name: 'department_fk',
+                referencedColumnName: 'department_id'
+            })
+            department!: Department;
+
+            @ManyToOne(() => User)
+            @JoinColumn([
+                {
+                    name: 'company_fk',
+                    referencedColumnName: 'company_id'
+                },
+                {
+                    name: 'user_fk',
+                    referencedColumnName: 'user_id'
+                }
+            ])
+            user!: User;
+        }
+
+        const model = new OrmMetadataModel([
+            getEntityMetadata(User),
+            getEntityMetadata(Department),
+            getEntityMetadata(Order)
+        ]);
+
+        const relations = model.getEntity(Order).relations;
+
+        const department = relations.find(
+            relation => relation.propertyKey === 'department'
+        );
+
+        const user = relations.find(
+            relation => relation.propertyKey === 'user'
+        );
+
+        expect(department?.joinColumns).toHaveLength(1);
+
+        expect(department?.joinColumns[0]?.name)
+            .toBe('department_fk');
+
+        expect(user?.joinColumns).toHaveLength(2);
+
+        expect(
+            user?.joinColumns.map(column => column.name)
+        ).toEqual([
+            'company_fk',
+            'user_fk'
+        ]);
     });
 
 
