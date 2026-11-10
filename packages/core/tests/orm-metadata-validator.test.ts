@@ -418,7 +418,9 @@ describe('OrmMetadataValidator', () => {
 
             @Column({
                 type: 'uuid',
-                name: 'user_id'
+                name: 'user_id',
+                insertable: false,
+                updatable: false
             })
             userId!: string;
 
@@ -471,188 +473,359 @@ describe('OrmMetadataValidator', () => {
     });
 
 
-it('should accept composite FK with custom physical names', () => {
-    @Entity({ name: 'users' })
-    class User {
-        @PrimaryKey({
-            type: 'uuid',
-            name: 'company_id'
-        })
-        companyId!: string;
+    it('should accept composite FK with custom physical names', () => {
+        @Entity({ name: 'users' })
+        class User {
+            @PrimaryKey({
+                type: 'uuid',
+                name: 'company_id'
+            })
+            companyId!: string;
 
-        @PrimaryKey({
-            type: 'uuid',
-            name: 'user_id'
-        })
-        userId!: string;
-    }
+            @PrimaryKey({
+                type: 'uuid',
+                name: 'user_id'
+            })
+            userId!: string;
+        }
 
-    @Entity({ name: 'orders' })
-    class Order {
-        @PrimaryKey({
-            type: 'uuid',
-            name: 'order_id'
-        })
-        id!: string;
+        @Entity({ name: 'orders' })
+        class Order {
+            @PrimaryKey({
+                type: 'uuid',
+                name: 'order_id'
+            })
+            id!: string;
 
-        @Column({
-            type: 'uuid',
-            name: 'customer_company_id'
-        })
-        customerCompanyId!: string;
 
-        @Column({
-            type: 'uuid',
-            name: 'customer_user_id'
-        })
-        customerUserId!: string;
-
-        @ManyToOne(() => User)
-        @JoinColumn([
-            {
+            @Column({
+                type: 'uuid',
                 name: 'customer_company_id',
-                referencedColumnName: 'company_id'
-            },
-            {
+                insertable: false,
+                updatable: false
+            })
+            customerCompanyId!: string;
+
+            @Column({
+                type: 'uuid',
                 name: 'customer_user_id',
-                referencedColumnName: 'user_id'
-            }
-        ])
-        customer!: User;
-    }
-
-    const model = new OrmMetadataModel([
-        getEntityMetadata(User),
-        getEntityMetadata(Order)
-    ]);
-
-    const relation =
-        model.getEntity(Order).relations[0];
-
-    expect(
-        relation?.joinColumns.map(column => column.name)
-    ).toEqual([
-        'customer_company_id',
-        'customer_user_id'
-    ]);
-
-    expect(
-        relation?.joinColumns.map(
-            column => column.referencedColumnName
-        )
-    ).toEqual([
-        'company_id',
-        'user_id'
-    ]);
-});
-
-it('should reject incompatible type in composite FK', () => {
-    @Entity({ name: 'users' })
-    class User {
-        @PrimaryKey({
-            type: 'uuid',
-            name: 'company_id'
-        })
-        companyId!: string;
-
-        @PrimaryKey({
-            type: 'uuid',
-            name: 'user_id'
-        })
-        userId!: string;
-    }
-
-    @Entity({ name: 'orders' })
-    class Order {
-        @PrimaryKey({
-            type: 'uuid',
-            name: 'order_id'
-        })
-        id!: string;
-
-        @Column({
-            type: 'uuid',
-            name: 'customer_company_id'
-        })
-        customerCompanyId!: string;
-
-        @Column({
-            type: 'integer',
-            name: 'customer_user_id'
-        })
-        customerUserId!: number;
-
-        @ManyToOne(() => User)
-        @JoinColumn([
-            {
-                name: 'customer_company_id',
-                referencedColumnName: 'company_id'
-            },
-            {
-                name: 'customer_user_id',
-                referencedColumnName: 'user_id'
-            }
-        ])
-        customer!: User;
-    }
-
-    expect(() => new OrmMetadataModel([
-        getEntityMetadata(User),
-        getEntityMetadata(Order)
-    ])).toThrow(/Foreign key type mismatch/);
-});
+                insertable: false,
+                updatable: false
+            })
+            customerUserId!: string;
 
 
-it('should reject composite FK referencing non-primary column', () => {
-    @Entity({ name: 'users' })
-    class User {
-        @PrimaryKey({
-            type: 'uuid',
-            name: 'company_id'
-        })
-        companyId!: string;
+            @ManyToOne(() => User)
+            @JoinColumn([
+                {
+                    name: 'customer_company_id',
+                    referencedColumnName: 'company_id'
+                },
+                {
+                    name: 'customer_user_id',
+                    referencedColumnName: 'user_id'
+                }
+            ])
+            customer!: User;
+        }
 
-        @PrimaryKey({
-            type: 'uuid',
-            name: 'user_id'
-        })
-        userId!: string;
+        const model = new OrmMetadataModel([
+            getEntityMetadata(User),
+            getEntityMetadata(Order)
+        ]);
 
-        @Column({
-            type: 'string',
-            name: 'email'
-        })
-        email!: string;
-    }
+        const relation =
+            model.getEntity(Order).relations[0];
 
-    @Entity({ name: 'orders' })
-    class Order {
-        @PrimaryKey({
-            type: 'uuid',
-            name: 'order_id'
-        })
-        id!: string;
+        expect(
+            relation?.joinColumns.map(column => column.name)
+        ).toEqual([
+            'customer_company_id',
+            'customer_user_id'
+        ]);
 
-        @ManyToOne(() => User)
-        @JoinColumn([
-            {
-                name: 'customer_company_id',
-                referencedColumnName: 'company_id'
-            },
-            {
-                name: 'customer_email',
-                referencedColumnName: 'email'
-            }
-        ])
-        customer!: User;
-    }
+        expect(
+            relation?.joinColumns.map(
+                column => column.referencedColumnName
+            )
+        ).toEqual([
+            'company_id',
+            'user_id'
+        ]);
+    });
 
-    expect(() => new OrmMetadataModel([
-        getEntityMetadata(User),
-        getEntityMetadata(Order)
-    ])).toThrow();
-});
+    it('should reject incompatible type in composite FK', () => {
+        @Entity({ name: 'users' })
+        class User {
+            @PrimaryKey({
+                type: 'uuid',
+                name: 'company_id'
+            })
+            companyId!: string;
 
+            @PrimaryKey({
+                type: 'uuid',
+                name: 'user_id'
+            })
+            userId!: string;
+        }
+
+        @Entity({ name: 'orders' })
+        class Order {
+            @PrimaryKey({
+                type: 'uuid',
+                name: 'order_id'
+            })
+            id!: string;
+
+            @Column({
+                type: 'uuid',
+                name: 'customer_company_id'
+            })
+            customerCompanyId!: string;
+
+            @Column({
+                type: 'integer',
+                name: 'customer_user_id'
+            })
+            customerUserId!: number;
+
+            @ManyToOne(() => User)
+            @JoinColumn([
+                {
+                    name: 'customer_company_id',
+                    referencedColumnName: 'company_id'
+                },
+                {
+                    name: 'customer_user_id',
+                    referencedColumnName: 'user_id'
+                }
+            ])
+            customer!: User;
+        }
+
+        expect(() => new OrmMetadataModel([
+            getEntityMetadata(User),
+            getEntityMetadata(Order)
+        ])).toThrow(/Foreign key type mismatch/);
+    });
+
+
+    it('should reject composite FK referencing non-primary column', () => {
+        @Entity({ name: 'users' })
+        class User {
+            @PrimaryKey({
+                type: 'uuid',
+                name: 'company_id'
+            })
+            companyId!: string;
+
+            @PrimaryKey({
+                type: 'uuid',
+                name: 'user_id'
+            })
+            userId!: string;
+
+            @Column({
+                type: 'string',
+                name: 'email'
+            })
+            email!: string;
+        }
+
+        @Entity({ name: 'orders' })
+        class Order {
+            @PrimaryKey({
+                type: 'uuid',
+                name: 'order_id'
+            })
+            id!: string;
+
+            @ManyToOne(() => User)
+            @JoinColumn([
+                {
+                    name: 'customer_company_id',
+                    referencedColumnName: 'company_id'
+                },
+                {
+                    name: 'customer_email',
+                    referencedColumnName: 'email'
+                }
+            ])
+            customer!: User;
+        }
+
+        expect(() => new OrmMetadataModel([
+            getEntityMetadata(User),
+            getEntityMetadata(Order)
+        ])).toThrow();
+    });
+
+
+    it('should reject writable scalar column sharing a foreign key', () => {
+        @Entity({ name: 'users' })
+        class User {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+        }
+
+        @Entity({ name: 'orders' })
+        class Order {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+
+            @Column({
+                type: 'uuid',
+                name: 'user_id'
+            })
+            userId!: string;
+
+            @ManyToOne(() => User)
+            @JoinColumn({
+                name: 'user_id',
+                referencedColumnName: 'id'
+            })
+            user!: User;
+        }
+
+        expect(() => new OrmMetadataModel([
+            getEntityMetadata(User),
+            getEntityMetadata(Order)
+        ])).toThrow(/Shared column write conflict/);
+    });
+
+
+    it('should accept read-only scalar column sharing a foreign key', () => {
+        @Entity({ name: 'users' })
+        class User {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+        }
+
+        @Entity({ name: 'orders' })
+        class Order {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+
+            @Column({
+                type: 'uuid',
+                name: 'user_id',
+                insertable: false,
+                updatable: false
+            })
+            userId!: string;
+
+            @ManyToOne(() => User)
+            @JoinColumn({
+                name: 'user_id',
+                referencedColumnName: 'id'
+            })
+            user!: User;
+        }
+
+        const model = new OrmMetadataModel([
+            getEntityMetadata(User),
+            getEntityMetadata(Order)
+        ]);
+
+        expect(model.getEntity(Order).relations)
+            .toHaveLength(1);
+    });
+
+
+    it('should reject partially writable shared foreign key column', () => {
+        @Entity({ name: 'users' })
+        class User {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+        }
+
+        @Entity({ name: 'orders' })
+        class Order {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+
+            @Column({
+                type: 'uuid',
+                name: 'user_id',
+                insertable: false,
+                updatable: true
+            })
+            userId!: string;
+
+            @ManyToOne(() => User)
+            @JoinColumn({
+                name: 'user_id',
+                referencedColumnName: 'id'
+            })
+            user!: User;
+        }
+
+        expect(() => new OrmMetadataModel([
+            getEntityMetadata(User),
+            getEntityMetadata(Order)
+        ])).toThrow(/Shared column write conflict/);
+    });
+
+
+    it('should accept foreign key owned only by relation', () => {
+        @Entity({ name: 'users' })
+        class User {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+        }
+
+        @Entity({ name: 'orders' })
+        class Order {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+
+            @ManyToOne(() => User)
+            @JoinColumn({
+                name: 'user_id',
+                referencedColumnName: 'id'
+            })
+            user!: User;
+        }
+
+        const model = new OrmMetadataModel([
+            getEntityMetadata(User),
+            getEntityMetadata(Order)
+        ]);
+
+        expect(model.getEntity(Order).relations)
+            .toHaveLength(1);
+    });
+
+
+    it('should reject shared primary key foreign key without explicit mapping', () => {
+        @Entity({ name: 'users' })
+        class User {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+        }
+
+        @Entity({ name: 'profiles' })
+        class Profile {
+            @PrimaryKey({
+                type: 'uuid',
+                name: 'user_id'
+            })
+            userId!: string;
+
+            @ManyToOne(() => User)
+            @JoinColumn({
+                name: 'user_id',
+                referencedColumnName: 'id'
+            })
+            user!: User;
+        }
+
+        expect(() => new OrmMetadataModel([
+            getEntityMetadata(User),
+            getEntityMetadata(Profile)
+        ])).toThrow();
+    });
 
 
 });

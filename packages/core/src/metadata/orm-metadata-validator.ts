@@ -52,7 +52,15 @@ export class OrmMetadataValidator {
         }
 
         // =====================================================
-        // 4. Registrar tablas físicas de entidades
+        // 5. Validar propiedad de escritura de columnas FK
+        // =====================================================
+
+        for (const item of entities) {
+            this.validateSharedColumnWriteOwnership(item);
+        }
+
+        // =====================================================
+        // 6. Registrar tablas físicas de entidades
         // =====================================================
 
         for (const item of entities) {
@@ -77,7 +85,7 @@ export class OrmMetadataValidator {
         }
 
         // =====================================================
-        // 5. Validar y registrar tablas intermedias
+        // 7. Validar y registrar tablas intermedias
         // =====================================================
 
         for (const item of entities) {
@@ -319,6 +327,90 @@ export class OrmMetadataValidator {
         }
     }
 
+
+
+    private validateSharedColumnWriteOwnership(
+        item: OrmEntityMetadata
+    ): void {
+        const entity = item.entity;
+
+        const scalarColumns = new Map(
+            entity.columns.map(column => [
+                column.columnName,
+                column
+            ] as const)
+        );
+
+        const primaryKeyNames = new Set(
+            entity.primaryKeys.map(
+                column => column.columnName
+            )
+        );
+
+        for (const relation of item.relations) {
+            if (!relation.isOwningSide) {
+                continue;
+            }
+
+            // Las ManyToMany escriben en una tabla intermedia,
+            // no directamente en la tabla de la entidad.
+            if (relation.type === 'many-to-many') {
+                continue;
+            }
+
+            for (const joinColumn of relation.joinColumns) {
+                const columnName = joinColumn.name;
+
+                // No admitimos todavía claves primarias
+                // compartidas con relaciones (@MapsId).
+                if (primaryKeyNames.has(columnName)) {
+                    throw new MetadataError(
+                        `Shared primary key column ` +
+                        `"${columnName}" in relation ` +
+                        `"${entity.target.name}.` +
+                        `${String(relation.propertyKey)}" ` +
+                        `requires explicit shared-key mapping.`
+                    );
+                }
+
+                const scalarColumn =
+                    scalarColumns.get(columnName);
+
+                // Si no existe representación escalar,
+                // la relación es la única propietaria.
+                if (!scalarColumn) {
+                    continue;
+                }
+
+                // Si no se especifican, los indicadores
+                // de escritura se consideran habilitados.
+                const insertable =
+                    scalarColumn.insertable !== false;
+
+                const updatable =
+                    scalarColumn.updatable !== false;
+
+                if (insertable || updatable) {
+                    const operations = [
+                        ...(insertable ? ['INSERT'] : []),
+                        ...(updatable ? ['UPDATE'] : [])
+                    ].join(' and ');
+
+                    throw new MetadataError(
+                        `Shared column write conflict in ` +
+                        `"${entity.target.name}.` +
+                        `${String(relation.propertyKey)}": ` +
+                        `column "${columnName}" is writable ` +
+                        `by both the scalar property ` +
+                        `"${String(scalarColumn.propertyKey)}" ` +
+                        `and the relation during ${operations}. ` +
+                        `Set insertable: false and ` +
+                        `updatable: false on the scalar column.`
+                    );
+                }
+            }
+        }
+    }
 
 
 
