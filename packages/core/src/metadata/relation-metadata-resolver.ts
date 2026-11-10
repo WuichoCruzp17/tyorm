@@ -375,6 +375,7 @@ export class RelationMetadataResolver {
 
 
 
+
     private resolveJoinTable(
         options: {
             readonly name?: string;
@@ -402,12 +403,24 @@ export class RelationMetadataResolver {
             );
         }
 
+        // Detectar una relación autorreferencial.
+        const selfReferencing =
+            source.target === destination.target;
+
+        const sourcePrefix = selfReferencing
+            ? `source_${source.tableName}`
+            : source.tableName;
+
+        const destinationPrefix = selfReferencing
+            ? `target_${destination.tableName}`
+            : destination.tableName;
+
         // Inferir columnas del propietario.
         const sourceColumns =
             options.joinColumns ??
             this.inferJoinTableColumns(
                 source,
-                source.tableName
+                sourcePrefix
             );
 
         // Inferir columnas de la entidad destino.
@@ -415,7 +428,7 @@ export class RelationMetadataResolver {
             options.inverseJoinColumns ??
             this.inferJoinTableColumns(
                 destination,
-                destination.tableName
+                destinationPrefix
             );
 
         const joinColumns = this.resolveJoinColumns(
@@ -437,6 +450,7 @@ export class RelationMetadataResolver {
             inverseJoinColumns
         };
     }
+
 
 
 

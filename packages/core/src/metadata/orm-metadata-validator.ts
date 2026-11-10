@@ -16,7 +16,10 @@ export class OrmMetadataValidator {
         entities: readonly OrmEntityMetadata[]
     ): void {
         const occupiedTables = new Map<string, string>();
-
+        // Validar conflictos entre propiedades
+        for (const item of entities) {
+            this.validatePropertyCollisions(item);
+        }
         // 1. Registrar tablas de entidades.
         for (const item of entities) {
             const entity = item.entity;
@@ -156,4 +159,29 @@ export class OrmMetadataValidator {
             ? name
             : `${schema}.${name}`;
     }
+
+
+    private validatePropertyCollisions(
+        item: OrmEntityMetadata
+    ): void {
+        const entity = item.entity;
+
+        const columnProperties = new Set<string | symbol>(
+            [
+                ...entity.columns,
+                ...entity.primaryKeys
+            ].map(column => column.propertyKey)
+        );
+
+        for (const relation of item.relations) {
+            if (columnProperties.has(relation.propertyKey)) {
+                throw new MetadataError(
+                    `Property "${String(relation.propertyKey)}" ` +
+                    `in entity "${entity.target.name}" ` +
+                    `cannot be mapped as both a column and a relation.`
+                );
+            }
+        }
+    }
+
 }

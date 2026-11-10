@@ -11,7 +11,9 @@ import {
     ManyToMany,
     JoinTable,
     getEntityMetadata,
-    ensureSymbolMetadata
+    ensureSymbolMetadata,
+    Column,
+    ManyToOne
 } from '../src/decorators';
 
 import {
@@ -233,4 +235,146 @@ describe('OrmMetadataValidator', () => {
 
         expect(model.getEntity(User).relations).toHaveLength(1);
     });
+
+
+    it('should accept self-referencing many-to-many relations', () => {
+        @Entity({ name: 'users' })
+        class User {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+
+            @ManyToMany(() => User)
+            @JoinTable({
+                name: 'user_connections'
+            })
+            connections!: User[];
+        }
+
+        const model = new OrmMetadataModel([
+            getEntityMetadata(User)
+        ]);
+
+        const joinTable =
+            model.getEntity(User).relations[0]?.joinTable;
+
+        expect(joinTable?.joinColumns[0]?.name)
+            .toBe('source_users_id');
+
+        expect(joinTable?.inverseJoinColumns[0]?.name)
+            .toBe('target_users_id');
+    });
+
+
+    it('should reject duplicate explicit self-referencing columns', () => {
+        @Entity({ name: 'users' })
+        class User {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+
+            @ManyToMany(() => User)
+            @JoinTable({
+                name: 'user_connections',
+                joinColumns: [
+                    {
+                        name: 'user_id',
+                        referencedColumnName: 'id'
+                    }
+                ],
+                inverseJoinColumns: [
+                    {
+                        name: 'user_id',
+                        referencedColumnName: 'id'
+                    }
+                ]
+            })
+            connections!: User[];
+        }
+
+        expect(() => new OrmMetadataModel([
+            getEntityMetadata(User)
+        ])).toThrow(/Duplicate join table column/);
+    });
+
+
+
+    it('should reject property mapped as both column and relation', () => {
+        @Entity()
+        class User {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+        }
+
+        @Entity()
+        class Order {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+
+            @Column({ type: 'uuid' })
+            @ManyToOne(() => User)
+            user!: User;
+        }
+
+        expect(() => new OrmMetadataModel([
+            getEntityMetadata(User),
+            getEntityMetadata(Order)
+        ])).toThrow(
+            /cannot be mapped as both a column and a relation/
+        );
+    });
+
+
+    it('should accept distinct scalar and relation properties', () => {
+        @Entity()
+        class User {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+        }
+
+        @Entity()
+        class Order {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+
+            @Column({ type: 'uuid' })
+            referenceId!: string;
+
+            @ManyToOne(() => User)
+            user!: User;
+        }
+
+        const model = new OrmMetadataModel([
+            getEntityMetadata(User),
+            getEntityMetadata(Order)
+        ]);
+
+        const metadata = model.getEntity(Order);
+
+        expect(metadata.entity.columns).toHaveLength(1);
+        expect(metadata.relations).toHaveLength(1);
+    });
+
+
+    it('should reject primary key property mapped as relation', () => {
+        @Entity()
+        class User {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+        }
+
+        @Entity()
+        class Order {
+            @PrimaryKey({ type: 'uuid' })
+            @ManyToOne(() => User)
+            id!: string;
+        }
+
+        expect(() => new OrmMetadataModel([
+            getEntityMetadata(User),
+            getEntityMetadata(Order)
+        ])).toThrow(
+            /cannot be mapped as both a column and a relation/
+        );
+    });
+
+
 });

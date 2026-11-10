@@ -960,4 +960,112 @@ describe("RelationMetadataResolver", () => {
 
 
 
+    it('should infer self-referencing many-to-many columns', () => {
+        @Entity({ name: 'users' })
+        class User {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+
+            @ManyToMany(() => User)
+            @JoinTable({
+                name: 'user_connections'
+            })
+            connections!: User[];
+        }
+
+        const resolver = new RelationMetadataResolver([
+            getEntityMetadata(User)
+        ]);
+
+        const relation = resolver.resolve(User).relations[0];
+        const joinTable = relation?.joinTable;
+
+        expect(joinTable?.joinColumns[0]?.name)
+            .toBe('source_users_id');
+
+        expect(joinTable?.inverseJoinColumns[0]?.name)
+            .toBe('target_users_id');
+    });
+
+
+    it('should infer self-referencing composite join columns', () => {
+        @Entity({ name: 'nodes' })
+        class Node {
+            @PrimaryKey({ type: 'uuid' })
+            treeId!: string;
+
+            @PrimaryKey({ type: 'uuid' })
+            nodeId!: string;
+
+            @ManyToMany(() => Node)
+            @JoinTable({
+                name: 'node_connections'
+            })
+            connections!: Node[];
+        }
+
+        const resolver = new RelationMetadataResolver([
+            getEntityMetadata(Node)
+        ]);
+
+        const joinTable =
+            resolver.resolve(Node).relations[0]?.joinTable;
+
+        expect(
+            joinTable?.joinColumns.map(column => column.name)
+        ).toEqual([
+            'source_nodes_treeId',
+            'source_nodes_nodeId'
+        ]);
+
+        expect(
+            joinTable?.inverseJoinColumns.map(column => column.name)
+        ).toEqual([
+            'target_nodes_treeId',
+            'target_nodes_nodeId'
+        ]);
+    });
+
+
+    it('should preserve explicit self-referencing join columns', () => {
+        @Entity({ name: 'users' })
+        class User {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+
+            @ManyToMany(() => User)
+            @JoinTable({
+                name: 'user_connections',
+                joinColumns: [
+                    {
+                        name: 'parent_user_id',
+                        referencedColumnName: 'id'
+                    }
+                ],
+                inverseJoinColumns: [
+                    {
+                        name: 'child_user_id',
+                        referencedColumnName: 'id'
+                    }
+                ]
+            })
+            connections!: User[];
+        }
+
+        const resolver = new RelationMetadataResolver([
+            getEntityMetadata(User)
+        ]);
+
+        const joinTable =
+            resolver.resolve(User).relations[0]?.joinTable;
+
+        expect(joinTable?.joinColumns[0]?.name)
+            .toBe('parent_user_id');
+
+        expect(joinTable?.inverseJoinColumns[0]?.name)
+            .toBe('child_user_id');
+    });
+
+
+
 });
