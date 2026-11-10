@@ -7,8 +7,10 @@ import type {
     QueryPredicate
 } from './predicate';
 
+import type { EntityTarget } from '../../metadata';
+
 export interface QuerySource {
-    readonly entity: Function;
+    readonly entity: EntityTarget;
     readonly alias: string;
 }
 

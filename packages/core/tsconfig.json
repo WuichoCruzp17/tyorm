@@ -6,7 +6,8 @@
     "emitDecoratorMetadata": false,
     "lib": [
       "ES2022",
-      "ESNext.Decorators"
+      "ESNext.Decorators",
+      "ESNext.Symbol"
     ],
     "rootDir": "./src",
     "outDir": "./dist",
