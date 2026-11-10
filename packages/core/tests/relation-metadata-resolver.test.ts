@@ -838,4 +838,126 @@ describe("RelationMetadataResolver", () => {
         expect(relation?.joinColumns[0]?.name).toBe('user_id');
     });
 
+
+    it('should infer join table column names', () => {
+        @Entity({ name: 'users' })
+        class User {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+
+            @ManyToMany(() => Role)
+            @JoinTable({
+                name: 'users_roles'
+            })
+            roles!: Role[];
+        }
+
+        @Entity({ name: 'roles' })
+        class Role {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+        }
+
+        const resolver = new RelationMetadataResolver([
+            getEntityMetadata(User),
+            getEntityMetadata(Role)
+        ]);
+
+        const relation = resolver.resolve(User).relations[0];
+
+        expect(relation?.joinTable?.joinColumns[0]?.name)
+            .toBe('users_id');
+
+        expect(relation?.joinTable?.inverseJoinColumns[0]?.name)
+            .toBe('roles_id');
+    });
+
+
+    it('should preserve explicit join table column names', () => {
+        @Entity({ name: 'users' })
+        class User {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+
+            @ManyToMany(() => Role)
+            @JoinTable({
+                name: 'users_roles',
+                joinColumns: [
+                    {
+                        name: 'custom_user_id',
+                        referencedColumnName: 'id'
+                    }
+                ],
+                inverseJoinColumns: [
+                    {
+                        name: 'custom_role_id',
+                        referencedColumnName: 'id'
+                    }
+                ]
+            })
+            roles!: Role[];
+        }
+
+        @Entity({ name: 'roles' })
+        class Role {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+        }
+
+        const resolver = new RelationMetadataResolver([
+            getEntityMetadata(User),
+            getEntityMetadata(Role)
+        ]);
+
+        const relation = resolver.resolve(User).relations[0];
+
+        expect(relation?.joinTable?.joinColumns[0]?.name)
+            .toBe('custom_user_id');
+
+        expect(relation?.joinTable?.inverseJoinColumns[0]?.name)
+            .toBe('custom_role_id');
+    });
+
+
+    it('should infer composite join table columns', () => {
+        @Entity({ name: 'members' })
+        class Member {
+            @PrimaryKey({ type: 'uuid' })
+            companyId!: string;
+
+            @PrimaryKey({ type: 'uuid' })
+            memberId!: string;
+
+            @ManyToMany(() => Permission)
+            @JoinTable({
+                name: 'member_permissions'
+            })
+            permissions!: Permission[];
+        }
+
+        @Entity({ name: 'permissions' })
+        class Permission {
+            @PrimaryKey({ type: 'uuid' })
+            id!: string;
+        }
+
+        const resolver = new RelationMetadataResolver([
+            getEntityMetadata(Member),
+            getEntityMetadata(Permission)
+        ]);
+
+        const relation = resolver.resolve(Member).relations[0];
+
+        const columns = relation?.joinTable?.joinColumns;
+
+        expect(columns).toHaveLength(2);
+
+        expect(columns?.map(column => column.name)).toEqual([
+            'members_companyId',
+            'members_memberId'
+        ]);
+    });
+
+
+
 });

@@ -374,6 +374,7 @@ export class RelationMetadataResolver {
 
 
 
+
     private resolveJoinTable(
         options: {
             readonly name?: string;
@@ -389,13 +390,11 @@ export class RelationMetadataResolver {
             options.name ??
             `${source.tableName}_${destination.tableName}`;
 
-        // NUEVO: Validar el nombre de la tabla intermedia
         this.validateDatabaseIdentifier(
             name,
             'Join table name'
         );
 
-        // NUEVO: Validar el esquema cuando esté definido
         if (options.schema !== undefined) {
             this.validateDatabaseIdentifier(
                 options.schema,
@@ -403,15 +402,29 @@ export class RelationMetadataResolver {
             );
         }
 
-        // EXISTENTE: Resolver las columnas del propietario
+        // Inferir columnas del propietario.
+        const sourceColumns =
+            options.joinColumns ??
+            this.inferJoinTableColumns(
+                source,
+                source.tableName
+            );
+
+        // Inferir columnas de la entidad destino.
+        const destinationColumns =
+            options.inverseJoinColumns ??
+            this.inferJoinTableColumns(
+                destination,
+                destination.tableName
+            );
+
         const joinColumns = this.resolveJoinColumns(
-            options.joinColumns,
+            sourceColumns,
             source
         );
 
-        // EXISTENTE: Resolver las columnas de la entidad destino
         const inverseJoinColumns = this.resolveJoinColumns(
-            options.inverseJoinColumns,
+            destinationColumns,
             destination
         );
 
@@ -424,6 +437,7 @@ export class RelationMetadataResolver {
             inverseJoinColumns
         };
     }
+
 
 
 
@@ -724,6 +738,17 @@ export class RelationMetadataResolver {
                 // comprobará en una fase posterior.
             }
         }
+    }
+
+
+    private inferJoinTableColumns(
+        entity: EntityDefinition,
+        prefix: string
+    ): readonly JoinColumnOptions[] {
+        return entity.primaryKeys.map(key => ({
+            name: `${prefix}_${key.columnName}`,
+            referencedColumnName: key.columnName
+        }));
     }
 
 }
