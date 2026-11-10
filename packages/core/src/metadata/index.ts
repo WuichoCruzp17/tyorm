@@ -29,3 +29,15 @@ export {
 export type {
     ResolvedEntityRelations
 } from './relation-metadata-resolver';
+
+export type {
+    OrmEntityMetadata
+} from './orm-entity-metadata';
+
+export {
+    OrmMetadataModel
+} from './orm-metadata-model';
+
+export {
+    OrmMetadataValidator
+} from './orm-metadata-validator';

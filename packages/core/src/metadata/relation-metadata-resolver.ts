@@ -50,6 +50,7 @@ export class RelationMetadataResolver {
     }
 
 
+
     resolve(
         target: EntityTarget
     ): ResolvedEntityRelations {
@@ -81,7 +82,7 @@ export class RelationMetadataResolver {
             }
         }
 
-        // 3. Resolver los metadatos de las relaciones
+        // 3. Resolver relaciones
         const relations = declarations.relations.map(
             declaration => this.resolveRelation(
                 entity,
@@ -95,17 +96,29 @@ export class RelationMetadataResolver {
             this.validateReferentialOptions(entity, relation);
         }
 
-        // 5. NUEVO: Congelar cada relación y sus objetos internos
+        // 5. NUEVO: Detectar columnas locales duplicadas
+        this.validateLocalJoinColumnCollisions(
+            entity,
+            relations
+        );
+        // NUEVO: Validar colisiones con columnas físicas
+        this.validatePhysicalColumnCollisions(
+            entity,
+            relations
+        );
+
+        // 6. Congelar los metadatos
         const frozenRelations = Object.freeze(
             relations.map(freezeRelationMetadata)
         );
 
-        // 6. NUEVO: Congelar también el resultado completo
+        // 7. Devolver resultado inmutable
         return Object.freeze({
             target,
             relations: frozenRelations
         });
     }
+
 
 
     resolveAll(): readonly ResolvedEntityRelations[] {
@@ -199,7 +212,8 @@ export class RelationMetadataResolver {
             declaration.type !== 'many-to-many'
             ? this.resolveJoinColumns(
                 joins[0]?.columns,
-                destination
+                destination,
+                declaration.propertyKey
             )
             : [];
 
@@ -272,7 +286,8 @@ export class RelationMetadataResolver {
 
     private resolveJoinColumns(
         options: readonly JoinColumnOptions[] | undefined,
-        destination: EntityDefinition
+        destination: EntityDefinition,
+        propertyKey?: string | symbol
     ): readonly JoinColumnMetadata[] {
         const primaryKeys = destination.primaryKeys;
 
@@ -283,7 +298,9 @@ export class RelationMetadataResolver {
         }
 
         const columns = options ?? primaryKeys.map(key => ({
-            name: key.columnName,
+            name: propertyKey !== undefined
+                ? `${String(propertyKey)}_${key.columnName}`
+                : key.columnName,
             referencedColumnName: key.columnName
         }));
 
@@ -584,6 +601,128 @@ export class RelationMetadataResolver {
             throw new MetadataError(
                 `${description} cannot contain null characters.`
             );
+        }
+    }
+
+
+    private validateLocalJoinColumnCollisions(
+        source: EntityDefinition,
+        relations: readonly RelationMetadata[]
+    ): void {
+        const usedColumns = new Map<string, string | symbol>();
+
+        for (const relation of relations) {
+            if (!relation.isOwningSide) {
+                continue;
+            }
+
+            // Las columnas de ManyToMany pertenecen
+            // a una tabla intermedia.
+            if (relation.type === 'many-to-many') {
+                continue;
+            }
+
+            for (const column of relation.joinColumns) {
+                if (usedColumns.has(column.name)) {
+                    const previous = usedColumns.get(column.name);
+
+                    throw new MetadataError(
+                        `Duplicate local join column "${column.name}" ` +
+                        `in entity ${source.target.name}. ` +
+                        `Used by relations ${String(previous)} and ` +
+                        `${String(relation.propertyKey)}.`
+                    );
+                }
+
+                usedColumns.set(
+                    column.name,
+                    relation.propertyKey
+                );
+            }
+        }
+    }
+
+
+
+    private hasExplicitJoinColumnName(
+        target: EntityTarget,
+        propertyKey: string | symbol,
+        columnName: string
+    ): boolean {
+        const declarations = getRelationDeclarations(target);
+
+        const join = declarations.joinColumns.find(
+            item => item.propertyKey === propertyKey
+        );
+
+        if (!join) {
+            return false;
+        }
+
+        return join.columns.some(
+            column => column.name === columnName
+        );
+    }
+
+
+    private validatePhysicalColumnCollisions(
+        source: EntityDefinition,
+        relations: readonly RelationMetadata[]
+    ): void {
+        const physicalColumns = new Map(
+            source.columns.map(column => [
+                column.columnName,
+                column
+            ] as const)
+        );
+
+        const primaryKeyColumns = new Set(
+            source.primaryKeys.map(key => key.columnName)
+        );
+
+        for (const relation of relations) {
+            if (!relation.isOwningSide) {
+                continue;
+            }
+
+            if (relation.type === 'many-to-many') {
+                continue;
+            }
+
+            for (const join of relation.joinColumns) {
+                if (primaryKeyColumns.has(join.name)) {
+                    throw new MetadataError(
+                        `Foreign key column "${join.name}" ` +
+                        `conflicts with a primary key in ` +
+                        `${source.target.name}.`
+                    );
+                }
+
+                const existing = physicalColumns.get(join.name);
+
+                if (!existing) {
+                    continue;
+                }
+
+                const explicit = this.hasExplicitJoinColumnName(
+                    source.target,
+                    relation.propertyKey,
+                    join.name
+                );
+
+                if (!explicit) {
+                    throw new MetadataError(
+                        `Inferred foreign key column "${join.name}" ` +
+                        `conflicts with an existing column in ` +
+                        `${source.target.name}. ` +
+                        `Use @JoinColumn to declare the mapping explicitly.`
+                    );
+                }
+
+                // La asociación explícita se permite por ahora.
+                // La compatibilidad de tipos y escritura se
+                // comprobará en una fase posterior.
+            }
         }
     }
 
