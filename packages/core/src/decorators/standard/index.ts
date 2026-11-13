@@ -3,7 +3,6 @@ export { PrimaryKey } from './primary-key.decorator';
 export { Entity } from './entity.decorator';
 
 export { getEntityMetadata } from './get-entity-metadata';
-export { ensureSymbolMetadata } from './symbol-metadata';
 
 export { ManyToOne } from './many-to-one.decorator';
 export { OneToMany } from './one-to-many.decorator';

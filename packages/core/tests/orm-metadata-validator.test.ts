@@ -11,7 +11,6 @@ import {
     ManyToMany,
     JoinTable,
     getEntityMetadata,
-    ensureSymbolMetadata,
     Column,
     ManyToOne,
     JoinColumn
@@ -20,6 +19,8 @@ import {
 import {
     OrmMetadataModel
 } from '../src/metadata';
+
+import {ensureSymbolMetadata} from "../src/runtime";
 
 ensureSymbolMetadata();
 

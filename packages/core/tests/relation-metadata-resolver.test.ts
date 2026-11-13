@@ -10,11 +10,12 @@ import {
     JoinTable,
     OneToOne,
     getEntityMetadata,
-    ensureSymbolMetadata,
     Column,
 } from "../src/decorators";
 
 import { MetadataError, OrmMetadataModel, RelationMetadataResolver } from "../src/metadata";
+
+import {ensureSymbolMetadata} from "../src/runtime";
 
 ensureSymbolMetadata();
 describe("RelationMetadataResolver", () => {

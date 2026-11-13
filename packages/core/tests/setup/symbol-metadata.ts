@@ -1,11 +1,11 @@
-console.log(
-    '[TyORM Test Setup] Symbol.metadata:',
-    Symbol.metadata
-);
-if (Symbol.metadata === undefined) {
-    Object.defineProperty(Symbol, 'metadata', {
-        value: Symbol('Symbol.metadata'),
-        configurable: true,
-        writable: false
-    });
+import {
+    ensureSymbolMetadata
+} from '../../src/runtime';
+
+const metadataSymbol = ensureSymbolMetadata();
+
+if (Symbol.metadata !== metadataSymbol) {
+    throw new Error(
+        'TyORM failed to initialize Symbol.metadata.'
+    );
 }

@@ -10,13 +10,14 @@ import {
     PrimaryKey,
     ManyToOne,
     getEntityMetadata,
-    ensureSymbolMetadata
 } from '../src/decorators';
 
 import {
     MetadataRegistry,
     OrmMetadataModel
 } from '../src/metadata';
+
+import {ensureSymbolMetadata} from "../src/runtime";
 
 ensureSymbolMetadata();
 

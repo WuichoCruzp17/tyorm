@@ -11,8 +11,9 @@ import {
     JoinColumn,
     JoinTable,
     getRelationDeclarations,
-    ensureSymbolMetadata
 } from '../src/decorators';
+
+import {ensureSymbolMetadata} from "../src/runtime";
 
 ensureSymbolMetadata();
 

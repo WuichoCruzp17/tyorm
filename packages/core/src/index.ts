@@ -38,8 +38,7 @@ export {
     Column,
     PrimaryKey,
     Entity,
-    getEntityMetadata,
-    ensureSymbolMetadata
+    getEntityMetadata
 } from './decorators';
 
 export {
@@ -57,3 +56,5 @@ export type {
 } from './decorators';
 
 export * from './query';
+
+export { ensureSymbolMetadata } from './runtime';

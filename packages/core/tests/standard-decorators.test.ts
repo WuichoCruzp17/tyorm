@@ -9,9 +9,12 @@ import {
     Column,
     Entity,
     PrimaryKey,
-    getEntityMetadata,
-    ensureSymbolMetadata
+    getEntityMetadata
 } from '../src/decorators';
+
+import {
+    ensureSymbolMetadata
+} from '../src/runtime';
 
 import {
     MetadataError,

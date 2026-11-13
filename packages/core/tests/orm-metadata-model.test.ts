@@ -11,7 +11,6 @@ import {
     ManyToOne,
     JoinColumn,
     getEntityMetadata,
-    ensureSymbolMetadata,
     Column,
     ManyToMany,
     JoinTable
@@ -26,6 +25,8 @@ import {
 import type { EntityMetadata } from '../src/metadata/contracts/entity-metadata';
 import type { ColumnMetadata } from '../src/metadata/contracts/column-metadata';
 import type { PrimaryKeyMetadata } from '../src/metadata/contracts/primary-key-metadata';
+
+import {ensureSymbolMetadata} from "../src/runtime";
 
 ensureSymbolMetadata();
 
