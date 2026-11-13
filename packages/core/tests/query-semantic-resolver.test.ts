@@ -20,16 +20,74 @@ import {
 } from '../src';
 
 import {
+    ManyToMany,
+    JoinTable
+} from '../src';
+
+import {
     OrmMetadataModel
 } from '../src/metadata/orm-metadata-model';
 
 function createFixture() {
     if (Symbol.metadata === undefined) {
-    Object.defineProperty(Symbol, 'metadata', {
-        value: Symbol('Symbol.metadata'),
-        configurable: true
-    });
-}
+        Object.defineProperty(Symbol, 'metadata', {
+            value: Symbol('Symbol.metadata'),
+            configurable: true
+        });
+    }
+
+    function createManyToManyFixture() {
+
+        @Entity({ name: 'users' })
+        class User {
+            @PrimaryKey({
+                type: 'uuid',
+                name: 'user_id'
+            })
+            id!: string;
+
+            @ManyToMany(() => Role, 'users')
+            @JoinTable({
+                name: 'user_roles',
+                joinColumns: [
+                    {
+                        name: 'user_id',
+                        referencedColumnName: 'user_id'
+                    }
+                ],
+                inverseJoinColumns: [
+                    {
+                        name: 'role_id',
+                        referencedColumnName: 'role_id'
+                    }
+                ]
+            })
+            roles!: Role[];
+        }
+
+        @Entity({ name: 'roles' })
+        class Role {
+            @PrimaryKey({
+                type: 'uuid',
+                name: 'role_id'
+            })
+            id!: string;
+
+            @ManyToMany(() => User, 'roles')
+            users!: User[];
+        }
+
+        const model = new OrmMetadataModel([
+            getEntityMetadata(User),
+            getEntityMetadata(Role)
+        ]);
+
+        return {
+            User,
+            Role,
+            model
+        };
+    }
     @Entity({ name: 'users' })
     class User {
         @PrimaryKey({
@@ -69,6 +127,59 @@ function createFixture() {
     return {
         User,
         Order,
+        model
+    };
+}
+
+function createManyToManyFixture() {
+
+    @Entity({ name: 'users' })
+    class User {
+        @PrimaryKey({
+            type: 'uuid',
+            name: 'user_id'
+        })
+        id!: string;
+
+        @ManyToMany(() => Role, 'users')
+        @JoinTable({
+            name: 'user_roles',
+            joinColumns: [
+                {
+                    name: 'user_id',
+                    referencedColumnName: 'user_id'
+                }
+            ],
+            inverseJoinColumns: [
+                {
+                    name: 'role_id',
+                    referencedColumnName: 'role_id'
+                }
+            ]
+        })
+        roles!: Role[];
+    }
+
+    @Entity({ name: 'roles' })
+    class Role {
+        @PrimaryKey({
+            type: 'uuid',
+            name: 'role_id'
+        })
+        id!: string;
+
+        @ManyToMany(() => User, 'roles')
+        users!: User[];
+    }
+
+    const model = new OrmMetadataModel([
+        getEntityMetadata(User),
+        getEntityMetadata(Role)
+    ]);
+
+    return {
+        User,
+        Role,
         model
     };
 }
@@ -268,4 +379,226 @@ describe('QuerySemanticResolver', () => {
         expect(Object.isFrozen(result.joins))
             .toBe(true);
     });
+});
+
+
+
+describe('QuerySemanticResolver - ManyToMany', () => {
+
+    it('should resolve owning ManyToMany JOIN', () => {
+        const { User, model } =
+            createManyToManyFixture();
+
+        const resolver = new QuerySemanticResolver(model);
+
+        const query = {
+            ...createSelect(User),
+            joins: [
+                {
+                    kind: 'join' as const,
+                    type: 'inner' as const,
+                    sourceAlias: 'u',
+                    relation: 'roles',
+                    alias: 'r'
+                }
+            ]
+        };
+
+        const result = resolver.resolve(query);
+
+        expect(result.joins).toHaveLength(1);
+
+        const plan = result.joins[0]?.plan;
+
+        expect(plan?.kind).toBe('junction');
+
+        if (plan?.kind !== 'junction') {
+            throw new Error('Expected junction plan');
+        }
+
+        expect(plan.table.name).toBe('user_roles');
+
+        expect(plan.sourceConditions).toEqual([
+            {
+                kind: 'resolved-join-condition',
+                left: {
+                    tableAlias: 'u',
+                    columnName: 'user_id'
+                },
+                right: {
+                    tableAlias: plan.table.alias,
+                    columnName: 'user_id'
+                }
+            }
+        ]);
+
+        expect(plan.targetConditions).toEqual([
+            {
+                kind: 'resolved-join-condition',
+                left: {
+                    tableAlias: plan.table.alias,
+                    columnName: 'role_id'
+                },
+                right: {
+                    tableAlias: 'r',
+                    columnName: 'role_id'
+                }
+            }
+        ]);
+    });
+
+    it('should resolve inverse ManyToMany JOIN', () => {
+        const { Role, model } =
+            createManyToManyFixture();
+
+        const resolver = new QuerySemanticResolver(model);
+
+        const query = {
+            kind: 'select' as const,
+            from: {
+                entity: Role,
+                alias: 'r'
+            },
+            selections: [],
+            joins: [
+                {
+                    kind: 'join' as const,
+                    type: 'inner' as const,
+                    sourceAlias: 'r',
+                    relation: 'users',
+                    alias: 'u'
+                }
+            ],
+            orderBy: [],
+            distinct: false
+        };
+
+        const result = resolver.resolve(query);
+
+        const plan = result.joins[0]?.plan;
+
+        expect(plan?.kind).toBe('junction');
+
+        if (plan?.kind !== 'junction') {
+            throw new Error('Expected junction plan');
+        }
+
+        expect(plan.sourceConditions[0]?.right.columnName)
+            .toBe('role_id');
+
+        expect(plan.targetConditions[0]?.left.columnName)
+            .toBe('user_id');
+    });
+
+    it('should avoid reserved junction aliases', () => {
+        const { User, model } =
+            createManyToManyFixture();
+
+        const resolver = new QuerySemanticResolver(model);
+
+        const query = {
+            ...createSelect(User),
+            joins: [
+                {
+                    kind: 'join' as const,
+                    type: 'inner' as const,
+                    sourceAlias: 'u',
+                    relation: 'roles',
+                    alias: '__tyorm_junction_0'
+                }
+            ]
+        };
+
+        const result = resolver.resolve(query);
+
+        const plan = result.joins[0]?.plan;
+
+        expect(plan?.kind).toBe('junction');
+
+        if (plan?.kind !== 'junction') {
+            throw new Error('Expected junction plan');
+        }
+
+        expect(plan.table.alias)
+            .not.toBe('__tyorm_junction_0');
+
+        expect(plan.table.alias)
+            .toBe('__tyorm_junction_1');
+    });
+
+    it('should resolve chained ManyToMany JOINs', () => {
+        const { User, model } =
+            createManyToManyFixture();
+
+        const resolver = new QuerySemanticResolver(model);
+
+        const query = {
+            ...createSelect(User),
+            joins: [
+                {
+                    kind: 'join' as const,
+                    type: 'inner' as const,
+                    sourceAlias: 'u',
+                    relation: 'roles',
+                    alias: 'r'
+                },
+                {
+                    kind: 'join' as const,
+                    type: 'inner' as const,
+                    sourceAlias: 'r',
+                    relation: 'users',
+                    alias: 'u2'
+                }
+            ]
+        };
+
+        const result = resolver.resolve(query);
+
+        expect(result.joins).toHaveLength(2);
+
+        const first = result.joins[0]?.plan;
+        const second = result.joins[1]?.plan;
+
+        expect(first?.kind).toBe('junction');
+        expect(second?.kind).toBe('junction');
+
+        if (
+            first?.kind !== 'junction' ||
+            second?.kind !== 'junction'
+        ) {
+            throw new Error('Expected junction plans');
+        }
+
+        expect(first.table.alias)
+            .not.toBe(second.table.alias);
+
+        expect(result.aliases.has('u')).toBe(true);
+        expect(result.aliases.has('r')).toBe(true);
+        expect(result.aliases.has('u2')).toBe(true);
+    });
+
+    it('should reject duplicate entity aliases', () => {
+        const { User, model } =
+            createManyToManyFixture();
+
+        const resolver = new QuerySemanticResolver(model);
+
+        const query = {
+            ...createSelect(User),
+            joins: [
+                {
+                    kind: 'join' as const,
+                    type: 'inner' as const,
+                    sourceAlias: 'u',
+                    relation: 'roles',
+                    alias: 'u'
+                }
+            ]
+        };
+
+        expect(() =>
+            resolver.resolve(query)
+        ).toThrow();
+    });
+
 });
