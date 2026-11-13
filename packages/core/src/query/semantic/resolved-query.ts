@@ -6,8 +6,11 @@ import type {
 
 import type {
     OrmEntityMetadata
-} from '../../metadata';
+}from '../../metadata';
 
+import type {
+    ResolvedJoinCondition
+} from './resolved-join-condition';
 export interface ResolvedQueryAlias {
     readonly alias: string;
     readonly metadata: OrmEntityMetadata;
@@ -23,11 +26,19 @@ export interface ResolvedColumnReference {
 
 export interface ResolvedJoin {
     readonly kind: 'resolved-join';
+
     readonly join: QueryJoin;
+
     readonly source: ResolvedQueryAlias;
     readonly target: ResolvedQueryAlias;
+
     readonly relationProperty: string | symbol;
+
+    readonly conditions:
+        readonly ResolvedJoinCondition[];
 }
+
+
 
 export interface ResolvedSelectQuery {
     readonly kind: 'resolved-select';

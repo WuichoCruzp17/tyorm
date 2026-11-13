@@ -22,9 +22,16 @@ import type {
 
 import { QuerySemanticError } from './query-semantic-error';
 
+import {
+    JoinConditionResolver
+} from './join-condition-resolver';
+
 export class QuerySemanticResolver {
     private readonly normalizer: QueryAstNormalizer =
         new QueryAstNormalizer();
+
+    private readonly joinConditionResolver =
+        new JoinConditionResolver();
 
     constructor(
         private readonly metadataModel: OrmMetadataModel
@@ -97,7 +104,20 @@ export class QuerySemanticResolver {
                     metadata: targetMetadata
                 });
 
+            if (aliases.has(join.alias)) {
+                throw new QuerySemanticError(
+                    `Duplicate query alias "${join.alias}".`
+                );
+            }
             aliases.set(join.alias, target);
+
+            const conditions = this.joinConditionResolver.resolve(
+                relation,
+                join.sourceAlias,
+                join.alias,
+                source.metadata,
+                targetMetadata
+            );
 
             joins.push(
                 Object.freeze({
@@ -105,7 +125,8 @@ export class QuerySemanticResolver {
                     join,
                     source,
                     target,
-                    relationProperty: relation.propertyKey
+                    relationProperty: relation.propertyKey,
+                    conditions
                 })
             );
         }
