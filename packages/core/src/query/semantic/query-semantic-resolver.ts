@@ -26,12 +26,28 @@ import {
     JoinConditionResolver
 } from './join-condition-resolver';
 
+
+import {
+    JunctionJoinResolver
+} from './junction-join-resolver';
+
+import type {
+    ResolvedJoinPlan
+} from './resolved-join-plan';
+
+import type {
+    ResolvedJoinCondition
+} from './resolved-join-condition';
+
 export class QuerySemanticResolver {
     private readonly normalizer: QueryAstNormalizer =
         new QueryAstNormalizer();
 
     private readonly joinConditionResolver =
         new JoinConditionResolver();
+
+    private readonly junctionJoinResolver =
+        new JunctionJoinResolver();
 
     constructor(
         private readonly metadataModel: OrmMetadataModel
@@ -46,13 +62,22 @@ export class QuerySemanticResolver {
     private resolveSelect(
         query: SelectQuery
     ): ResolvedSelectQuery {
+
+
         const aliases = new Map<
             string,
             ResolvedQueryAlias
         >();
 
+
+
         const columns: ResolvedColumnReference[] = [];
         const joins: ResolvedJoin[] = [];
+
+        const reservedAliases = new Set<string>([
+            query.from.alias,
+            ...query.joins.map(join => join.alias)
+        ]);
 
         // 1. Resolver entidad principal.
         const rootMetadata = this.getEntityMetadata(
@@ -69,9 +94,8 @@ export class QuerySemanticResolver {
 
         // 2. Resolver relaciones JOIN.
         for (const join of query.joins) {
-            const source = aliases.get(
-                join.sourceAlias
-            );
+
+            const source = aliases.get(join.sourceAlias);
 
             if (!source) {
                 throw new QuerySemanticError(
@@ -79,16 +103,21 @@ export class QuerySemanticResolver {
                 );
             }
 
-            const relation =
-                source.metadata.relations.find(
-                    item =>
-                        item.propertyKey === join.relation
-                );
+            const relation = source.metadata.relations.find(
+                item => item.propertyKey === join.relation
+            );
 
             if (!relation) {
                 throw new QuerySemanticError(
-                    `Unknown relation "${join.relation}" ` +
+                    `Unknown relation "${String(join.relation)}" ` +
                     `on entity ${source.metadata.entity.target.name}.`
+                );
+            }
+
+            // Validar alias duplicados antes de registrar el destino.
+            if (aliases.has(join.alias)) {
+                throw new QuerySemanticError(
+                    `Duplicate query alias "${join.alias}".`
                 );
             }
 
@@ -98,26 +127,60 @@ export class QuerySemanticResolver {
                 targetConstructor
             );
 
-            const target: ResolvedQueryAlias =
-                Object.freeze({
-                    alias: join.alias,
-                    metadata: targetMetadata
-                });
+            const target: ResolvedQueryAlias = Object.freeze({
+                alias: join.alias,
+                metadata: targetMetadata
+            });
 
-            if (aliases.has(join.alias)) {
-                throw new QuerySemanticError(
-                    `Duplicate query alias "${join.alias}".`
+            // Resolver el plan físico según el tipo de relación.
+            let plan: ResolvedJoinPlan;
+
+            if (relation.type === 'many-to-many') {
+
+                // Generar un alias interno único.
+                let index = joins.length;
+                let junctionAlias: string;
+
+                do {
+                    junctionAlias = `__tyorm_junction_${index++}`;
+                } while (reservedAliases.has(junctionAlias));
+
+                reservedAliases.add(junctionAlias);
+
+                plan = this.junctionJoinResolver.resolve(
+                    relation,
+                    join.sourceAlias,
+                    join.alias,
+                    source.metadata,
+                    targetMetadata,
+                    junctionAlias
                 );
-            }
-            aliases.set(join.alias, target);
 
-            const conditions = this.joinConditionResolver.resolve(
-                relation,
-                join.sourceAlias,
-                join.alias,
-                source.metadata,
-                targetMetadata
-            );
+            } else {
+
+                const directConditions =
+                    this.joinConditionResolver.resolve(
+                        relation,
+                        join.sourceAlias,
+                        join.alias,
+                        source.metadata,
+                        targetMetadata
+                    );
+
+                plan = Object.freeze({
+                    kind: 'direct' as const,
+                    conditions: directConditions
+                });
+            }
+
+            // Compatibilidad con el contrato ResolvedJoin existente.
+            const conditions: readonly ResolvedJoinCondition[] =
+                plan.kind === 'direct'
+                    ? plan.conditions
+                    : Object.freeze([]);
+
+            // Registrar el alias después de resolver el JOIN.
+            aliases.set(join.alias, target);
 
             joins.push(
                 Object.freeze({
@@ -126,7 +189,8 @@ export class QuerySemanticResolver {
                     source,
                     target,
                     relationProperty: relation.propertyKey,
-                    conditions
+                    conditions,
+                    plan
                 })
             );
         }
