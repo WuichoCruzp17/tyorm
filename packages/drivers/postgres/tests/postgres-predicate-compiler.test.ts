@@ -184,31 +184,6 @@ describe('PostgresPredicateCompiler', () => {
         );
     });
 
-    it('rejects unsupported predicate kinds', () => {
-        const context =
-            new PostgresCompilationContext();
-
-        const predicate: QueryPredicate = {
-            kind: 'is-null',
-            expression: {
-                kind: 'column',
-                alias: 'u',
-                property: 'firstName'
-            },
-            negated: false
-        };
-
-        expect(() =>
-            compiler.compile(
-                predicate,
-                resolved,
-                context
-            )
-        ).toThrow(
-            'Unsupported predicate kind: is-null.'
-        );
-    });
-
     it('rejects missing named parameters', () => {
         const context =
             new PostgresCompilationContext();
@@ -236,5 +211,268 @@ describe('PostgresPredicateCompiler', () => {
         ).toThrow(
             'Missing query parameter "missing".'
         );
+    })
+
+
+    it('compiles AND predicates', () => {
+        const context = new PostgresCompilationContext({
+            age: 18,
+            name: 'Luis'
+        });
+
+        const predicate: QueryPredicate = {
+            kind: 'logical',
+            operator: 'and',
+            predicates: [
+                {
+                    kind: 'comparison',
+                    operator: 'gte',
+                    left: {
+                        kind: 'column',
+                        alias: 'u',
+                        property: 'age'
+                    },
+                    right: {
+                        kind: 'parameter',
+                        name: 'age'
+                    }
+                },
+                {
+                    kind: 'comparison',
+                    operator: 'eq',
+                    left: {
+                        kind: 'column',
+                        alias: 'u',
+                        property: 'firstName'
+                    },
+                    right: {
+                        kind: 'parameter',
+                        name: 'name'
+                    }
+                }
+            ]
+        };
+
+        expect(
+            compiler.compile(predicate, resolved, context)
+        ).toBe(
+            '("u"."age" >= $1 AND "u"."first_name" = $2)'
+        );
+
+        expect(context.getParameters()).toEqual([
+            18,
+            'Luis'
+        ]);
     });
+
+    it('compiles OR predicates', () => {
+        const context = new PostgresCompilationContext();
+
+        const predicate: QueryPredicate = {
+            kind: 'logical',
+            operator: 'or',
+            predicates: [
+                {
+                    kind: 'comparison',
+                    operator: 'lt',
+                    left: {
+                        kind: 'column',
+                        alias: 'u',
+                        property: 'age'
+                    },
+                    right: {
+                        kind: 'literal',
+                        value: 18
+                    }
+                },
+                {
+                    kind: 'comparison',
+                    operator: 'gt',
+                    left: {
+                        kind: 'column',
+                        alias: 'u',
+                        property: 'age'
+                    },
+                    right: {
+                        kind: 'literal',
+                        value: 65
+                    }
+                }
+            ]
+        };
+
+        expect(
+            compiler.compile(predicate, resolved, context)
+        ).toBe(
+            '("u"."age" < $1 OR "u"."age" > $2)'
+        );
+
+        expect(context.getParameters()).toEqual([
+            18,
+            65
+        ]);
+    });
+
+    it('compiles NOT predicates', () => {
+        const context = new PostgresCompilationContext();
+
+        const predicate: QueryPredicate = {
+            kind: 'not',
+            predicate: {
+                kind: 'comparison',
+                operator: 'eq',
+                left: {
+                    kind: 'column',
+                    alias: 'u',
+                    property: 'age'
+                },
+                right: {
+                    kind: 'literal',
+                    value: 18
+                }
+            }
+        };
+
+        expect(
+            compiler.compile(predicate, resolved, context)
+        ).toBe('NOT ("u"."age" = $1)');
+
+        expect(context.getParameters()).toEqual([18]);
+    });
+
+    it('compiles IS NULL', () => {
+        const context = new PostgresCompilationContext();
+
+        const predicate: QueryPredicate = {
+            kind: 'is-null',
+            expression: {
+                kind: 'column',
+                alias: 'u',
+                property: 'firstName'
+            },
+            negated: false
+        };
+
+        expect(
+            compiler.compile(predicate, resolved, context)
+        ).toBe('"u"."first_name" IS NULL');
+
+        expect(context.getParameters()).toEqual([]);
+    });
+
+    it('compiles IS NOT NULL', () => {
+        const context = new PostgresCompilationContext();
+
+        const predicate: QueryPredicate = {
+            kind: 'is-null',
+            expression: {
+                kind: 'column',
+                alias: 'u',
+                property: 'firstName'
+            },
+            negated: true
+        };
+
+        expect(
+            compiler.compile(predicate, resolved, context)
+        ).toBe('"u"."first_name" IS NOT NULL');
+    });
+
+    it('preserves precedence in nested predicates', () => {
+        const context = new PostgresCompilationContext();
+
+        const predicate: QueryPredicate = {
+            kind: 'logical',
+            operator: 'and',
+            predicates: [
+                {
+                    kind: 'logical',
+                    operator: 'or',
+                    predicates: [
+                        {
+                            kind: 'comparison',
+                            operator: 'lt',
+                            left: {
+                                kind: 'column',
+                                alias: 'u',
+                                property: 'age'
+                            },
+                            right: {
+                                kind: 'literal',
+                                value: 18
+                            }
+                        },
+                        {
+                            kind: 'comparison',
+                            operator: 'gt',
+                            left: {
+                                kind: 'column',
+                                alias: 'u',
+                                property: 'age'
+                            },
+                            right: {
+                                kind: 'literal',
+                                value: 65
+                            }
+                        }
+                    ]
+                },
+                {
+                    kind: 'is-null',
+                    expression: {
+                        kind: 'column',
+                        alias: 'u',
+                        property: 'firstName'
+                    },
+                    negated: true
+                }
+            ]
+        };
+
+        expect(
+            compiler.compile(predicate, resolved, context)
+        ).toBe(
+            '(("u"."age" < $1 OR "u"."age" > $2) AND "u"."first_name" IS NOT NULL)'
+        );
+
+        expect(context.getParameters()).toEqual([18, 65]);
+    });
+
+    it('rejects empty logical predicates', () => {
+        const context = new PostgresCompilationContext();
+
+        const predicate: QueryPredicate = {
+            kind: 'logical',
+            operator: 'and',
+            predicates: []
+        };
+
+        expect(() =>
+            compiler.compile(predicate, resolved, context)
+        ).toThrow(
+            'Logical predicate requires at least one predicate.'
+        );
+    });
+
+    it('rejects IN predicates until implemented', () => {
+        const context = new PostgresCompilationContext();
+
+        const predicate: QueryPredicate = {
+            kind: 'in',
+            expression: {
+                kind: 'column',
+                alias: 'u',
+                property: 'age'
+            },
+            values: [
+                { kind: 'literal', value: 18 }
+            ],
+            negated: false
+        };
+
+        expect(() =>
+            compiler.compile(predicate, resolved, context)
+        ).toThrow('Unsupported predicate kind: in.');
+    });
+
 });
