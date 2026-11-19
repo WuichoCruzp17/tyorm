@@ -269,11 +269,13 @@ export class PostgresPredicateCompiler {
     /**
      * Compila BETWEEN y NOT BETWEEN.
      *
-     * Ejemplo:
-     * u.age BETWEEN 18 AND 65
+     * Ejemplos:
      *
-     * SQL:
-     * "u"."age" BETWEEN $1 AND $2
+     * ("u"."age" BETWEEN $1 AND $2)
+     * ("u"."age" NOT BETWEEN $1 AND $2)
+     *
+     * Los paréntesis preservan explícitamente
+     * la agrupación del predicado.
      */
     private compileBetween(
         predicate: Extract<
@@ -305,7 +307,8 @@ export class PostgresPredicateCompiler {
             ? 'NOT BETWEEN'
             : 'BETWEEN';
 
-        return `${expression} ${operator} ${lower} AND ${upper}`;
+        return `(${expression} ${operator} ${lower} AND ${upper})`;
     }
+
 
 }

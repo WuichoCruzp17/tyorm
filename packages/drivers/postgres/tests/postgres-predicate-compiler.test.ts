@@ -531,7 +531,7 @@ describe('PostgresPredicateCompiler', () => {
 
         expect(
             compiler.compile(predicate, resolved, context)
-        ).toBe('"u"."age" BETWEEN $1 AND $2');
+        ).toBe('("u"."age" BETWEEN $1 AND $2)');
 
         expect(context.getParameters()).toEqual([
             18, 65
@@ -561,7 +561,7 @@ describe('PostgresPredicateCompiler', () => {
 
         expect(
             compiler.compile(predicate, resolved, context)
-        ).toBe('"u"."age" NOT BETWEEN $1 AND $2');
+        ).toBe('("u"."age" NOT BETWEEN $1 AND $2)');
 
         expect(context.getParameters()).toEqual([
             18, 65
@@ -652,7 +652,7 @@ describe('PostgresPredicateCompiler', () => {
 
         expect(
             compiler.compile(predicate, resolved, context)
-        ).toBe('"u"."age" BETWEEN $1 AND $2');
+        ).toBe('("u"."age" BETWEEN $1 AND $2)');
 
         expect(context.getParameters()).toEqual([
             18, 65
@@ -693,7 +693,7 @@ describe('PostgresPredicateCompiler', () => {
             );
 
             expect(sql).toBe(
-                'NOT ("u"."age" BETWEEN $1 AND $2)'
+                'NOT (("u"."age" BETWEEN $1 AND $2))'
             );
 
             expect(context.getParameters()).toEqual([
@@ -750,7 +750,7 @@ describe('PostgresPredicateCompiler', () => {
             );
 
             expect(sql).toBe(
-                '("u"."age" BETWEEN $1 AND $2 AND "u"."first_name" = $3)'
+                '(("u"."age" BETWEEN $1 AND $2) AND "u"."first_name" = $3)'
             );
 
             expect(context.getParameters()).toEqual([
@@ -807,7 +807,7 @@ describe('PostgresPredicateCompiler', () => {
             );
 
             expect(sql).toBe(
-                '("u"."age" BETWEEN $1 AND $2 OR "u"."age" > $3)'
+                '(("u"."age" BETWEEN $1 AND $2) OR "u"."age" > $3)'
             );
 
             expect(context.getParameters()).toEqual([
@@ -877,7 +877,7 @@ describe('PostgresPredicateCompiler', () => {
             );
 
             expect(sql).toBe(
-                '(("u"."age" BETWEEN $1 AND $2 OR "u"."age" > $3) AND "u"."first_name" IS NOT NULL)'
+                '((("u"."age" BETWEEN $1 AND $2) OR "u"."age" > $3) AND "u"."first_name" IS NOT NULL)'
             );
 
             expect(context.getParameters()).toEqual([
@@ -931,7 +931,7 @@ describe('PostgresPredicateCompiler', () => {
             );
 
             expect(sql).toBe(
-                'NOT (("u"."age" BETWEEN $1 AND $2 OR "u"."first_name" IS NULL))'
+                'NOT ((("u"."age" BETWEEN $1 AND $2) OR "u"."first_name" IS NULL))'
             );
 
             expect(context.getParameters()).toEqual([
@@ -1009,7 +1009,7 @@ describe('PostgresPredicateCompiler', () => {
             );
 
             expect(sql).toBe(
-                '("u"."age" BETWEEN $1 AND $2 AND ("u"."first_name" = $3 OR "u"."age" < $4))'
+                '(("u"."age" BETWEEN $1 AND $2) AND ("u"."first_name" = $3 OR "u"."age" < $4))'
             );
 
             expect(context.getParameters()).toEqual([
@@ -1019,6 +1019,64 @@ describe('PostgresPredicateCompiler', () => {
                 18
             ]);
         });
+    });
+
+
+    it('preserves structural distinction between NOT and NOT BETWEEN', () => {
+        const range: QueryPredicate = {
+            kind: 'between',
+            expression: {
+                kind: 'column',
+                alias: 'u',
+                property: 'age'
+            },
+            lower: {
+                kind: 'literal',
+                value: 18
+            },
+            upper: {
+                kind: 'literal',
+                value: 65
+            },
+            negated: false
+        };
+
+        const notPredicate: QueryPredicate = {
+            kind: 'not',
+            predicate: range
+        };
+
+        const notBetweenPredicate: QueryPredicate = {
+            ...range,
+            kind: 'between',
+            negated: true
+        };
+
+        const notContext = new PostgresCompilationContext();
+        const notBetweenContext = new PostgresCompilationContext();
+
+        const notSql = compiler.compile(
+            notPredicate,
+            resolved,
+            notContext
+        );
+
+        const notBetweenSql = compiler.compile(
+            notBetweenPredicate,
+            resolved,
+            notBetweenContext
+        );
+
+        expect(notSql).toBe(
+            'NOT (("u"."age" BETWEEN $1 AND $2))'
+        );
+
+        expect(notBetweenSql).toBe(
+            '("u"."age" NOT BETWEEN $1 AND $2)'
+        );
+
+        expect(notContext.getParameters()).toEqual([18, 65]);
+        expect(notBetweenContext.getParameters()).toEqual([18, 65]);
     });
 
 
