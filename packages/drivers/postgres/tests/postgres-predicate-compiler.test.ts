@@ -454,7 +454,8 @@ describe('PostgresPredicateCompiler', () => {
         );
     });
 
-    it('rejects IN predicates until implemented', () => {
+
+    it('compiles IN predicates', () => {
         const context = new PostgresCompilationContext();
 
         const predicate: QueryPredicate = {
@@ -465,14 +466,198 @@ describe('PostgresPredicateCompiler', () => {
                 property: 'age'
             },
             values: [
-                { kind: 'literal', value: 18 }
+                { kind: 'literal', value: 18 },
+                { kind: 'literal', value: 25 },
+                { kind: 'literal', value: 30 }
             ],
+            negated: false
+        };
+
+        expect(
+            compiler.compile(predicate, resolved, context)
+        ).toBe('"u"."age" IN ($1, $2, $3)');
+
+        expect(context.getParameters()).toEqual([
+            18, 25, 30
+        ]);
+    });
+
+    it('compiles NOT IN predicates', () => {
+        const context = new PostgresCompilationContext();
+
+        const predicate: QueryPredicate = {
+            kind: 'in',
+            expression: {
+                kind: 'column',
+                alias: 'u',
+                property: 'age'
+            },
+            values: [
+                { kind: 'literal', value: 18 },
+                { kind: 'literal', value: 65 }
+            ],
+            negated: true
+        };
+
+        expect(
+            compiler.compile(predicate, resolved, context)
+        ).toBe('"u"."age" NOT IN ($1, $2)');
+
+        expect(context.getParameters()).toEqual([
+            18, 65
+        ]);
+    });
+
+    it('compiles BETWEEN predicates', () => {
+        const context = new PostgresCompilationContext();
+
+        const predicate: QueryPredicate = {
+            kind: 'between',
+            expression: {
+                kind: 'column',
+                alias: 'u',
+                property: 'age'
+            },
+            lower: {
+                kind: 'literal',
+                value: 18
+            },
+            upper: {
+                kind: 'literal',
+                value: 65
+            },
+            negated: false
+        };
+
+        expect(
+            compiler.compile(predicate, resolved, context)
+        ).toBe('"u"."age" BETWEEN $1 AND $2');
+
+        expect(context.getParameters()).toEqual([
+            18, 65
+        ]);
+    });
+
+    it('compiles NOT BETWEEN predicates', () => {
+        const context = new PostgresCompilationContext();
+
+        const predicate: QueryPredicate = {
+            kind: 'between',
+            expression: {
+                kind: 'column',
+                alias: 'u',
+                property: 'age'
+            },
+            lower: {
+                kind: 'literal',
+                value: 18
+            },
+            upper: {
+                kind: 'literal',
+                value: 65
+            },
+            negated: true
+        };
+
+        expect(
+            compiler.compile(predicate, resolved, context)
+        ).toBe('"u"."age" NOT BETWEEN $1 AND $2');
+
+        expect(context.getParameters()).toEqual([
+            18, 65
+        ]);
+    });
+
+    it('rejects empty IN predicates', () => {
+        const context = new PostgresCompilationContext();
+
+        const predicate: QueryPredicate = {
+            kind: 'in',
+            expression: {
+                kind: 'column',
+                alias: 'u',
+                property: 'age'
+            },
+            values: [],
             negated: false
         };
 
         expect(() =>
             compiler.compile(predicate, resolved, context)
-        ).toThrow('Unsupported predicate kind: in.');
+        ).toThrow(
+            'IN predicate requires at least one value.'
+        );
+
+        expect(context.getParameters()).toEqual([]);
     });
+
+    it('preserves parameter order in IN predicates', () => {
+        const context = new PostgresCompilationContext({
+            first: 18,
+            second: 25
+        });
+
+        const predicate: QueryPredicate = {
+            kind: 'in',
+            expression: {
+                kind: 'column',
+                alias: 'u',
+                property: 'age'
+            },
+            values: [
+                {
+                    kind: 'parameter',
+                    name: 'second'
+                },
+                {
+                    kind: 'parameter',
+                    name: 'first'
+                }
+            ],
+            negated: false
+        };
+
+        expect(
+            compiler.compile(predicate, resolved, context)
+        ).toBe('"u"."age" IN ($1, $2)');
+
+        expect(context.getParameters()).toEqual([
+            25, 18
+        ]);
+    });
+
+    it('preserves parameter order in BETWEEN predicates', () => {
+        const context = new PostgresCompilationContext({
+            minimum: 18,
+            maximum: 65
+        });
+
+        const predicate: QueryPredicate = {
+            kind: 'between',
+            expression: {
+                kind: 'column',
+                alias: 'u',
+                property: 'age'
+            },
+            lower: {
+                kind: 'parameter',
+                name: 'minimum'
+            },
+            upper: {
+                kind: 'parameter',
+                name: 'maximum'
+            },
+            negated: false
+        };
+
+        expect(
+            compiler.compile(predicate, resolved, context)
+        ).toBe('"u"."age" BETWEEN $1 AND $2');
+
+        expect(context.getParameters()).toEqual([
+            18, 65
+        ]);
+    });
+
 
 });

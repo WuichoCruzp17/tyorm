@@ -59,9 +59,17 @@ export class PostgresPredicateCompiler {
                 );
 
             case 'in':
+                return this.compileIn(
+                    predicate,
+                    resolved,
+                    context
+                );
+
             case 'between':
-                throw new Error(
-                    `Unsupported predicate kind: ${predicate.kind}.`
+                return this.compileBetween(
+                    predicate,
+                    resolved,
+                    context
                 );
 
             default:
@@ -211,4 +219,93 @@ export class PostgresPredicateCompiler {
             `Unsupported predicate: ${String(value)}`
         );
     }
+
+
+    /**
+     * Compila predicados IN y NOT IN.
+     *
+     * Ejemplo:
+     * u.age IN (18, 25, 30)
+     *
+     * SQL:
+     * "u"."age" IN ($1, $2, $3)
+     */
+    private compileIn(
+        predicate: Extract<
+            QueryPredicate,
+            { kind: 'in' }
+        >,
+        resolved: ExpressionResolutionContext,
+        context: PostgresCompilationContext
+    ): string {
+        if (predicate.values.length === 0) {
+            throw new Error(
+                'IN predicate requires at least one value.'
+            );
+        }
+
+        const expression = this.expressions.compile(
+            predicate.expression,
+            resolved,
+            context
+        );
+
+        const values = predicate.values.map(
+            value => this.expressions.compile(
+                value,
+                resolved,
+                context
+            )
+        );
+
+        const operator = predicate.negated
+            ? 'NOT IN'
+            : 'IN';
+
+        return `${expression} ${operator} (${values.join(', ')})`;
+    }
+
+
+    /**
+     * Compila BETWEEN y NOT BETWEEN.
+     *
+     * Ejemplo:
+     * u.age BETWEEN 18 AND 65
+     *
+     * SQL:
+     * "u"."age" BETWEEN $1 AND $2
+     */
+    private compileBetween(
+        predicate: Extract<
+            QueryPredicate,
+            { kind: 'between' }
+        >,
+        resolved: ExpressionResolutionContext,
+        context: PostgresCompilationContext
+    ): string {
+        const expression = this.expressions.compile(
+            predicate.expression,
+            resolved,
+            context
+        );
+
+        const lower = this.expressions.compile(
+            predicate.lower,
+            resolved,
+            context
+        );
+
+        const upper = this.expressions.compile(
+            predicate.upper,
+            resolved,
+            context
+        );
+
+        const operator = predicate.negated
+            ? 'NOT BETWEEN'
+            : 'BETWEEN';
+
+        return `${expression} ${operator} ${lower} AND ${upper}`;
+    }
+
 }
