@@ -4,7 +4,10 @@ import type {
     SqlCompiler,
     SqlDialect,
     ResolvedSelectQuery,
-    ResolvedColumnReference
+    ResolvedColumnReference,
+    ResolvedJoin,
+    ResolvedJoinCondition,
+    ResolvedJoinColumn
 } from '@tyorm/core';
 
 import {
@@ -41,12 +44,6 @@ export class PostgresSelectCompiler implements SqlCompiler {
         parameters: Readonly<Record<string, unknown>> = {}
     ): CompiledQuery {
 
-        if (resolved.query.joins.length > 0) {
-            throw new Error(
-                'JOIN is not supported yet.'
-            );
-        }
-
         const context = new PostgresCompilationContext(
             parameters,
             this.dialect
@@ -56,6 +53,10 @@ export class PostgresSelectCompiler implements SqlCompiler {
         const from = this.compileFrom(resolved);
 
         const parts = [select, from];
+
+        parts.push(
+            ...this.compileJoins(resolved, context)
+        );
 
         if (resolved.query.where !== undefined) {
             const predicateSql = this.predicates.compile(
@@ -242,6 +243,113 @@ export class PostgresSelectCompiler implements SqlCompiler {
         }
 
         return parts;
+    }
+
+
+    private compileJoinColumn(
+        column: ResolvedJoinColumn
+    ): string {
+        const alias = this.dialect.quoteIdentifier(
+            column.tableAlias
+        );
+
+        const columnName = this.dialect.quoteIdentifier(
+            column.columnName
+        );
+
+        return `${alias}.${columnName}`;
+    }
+
+
+    private compileJoinCondition(
+        condition: ResolvedJoinCondition
+    ): string {
+        const left = this.compileJoinColumn(
+            condition.left
+        );
+
+        const right = this.compileJoinColumn(
+            condition.right
+        );
+
+        return `${left} = ${right}`;
+    }
+
+
+    private compileJoin(
+        join: ResolvedJoin,
+        resolved: ResolvedSelectQuery,
+        context: PostgresCompilationContext
+    ): string {
+        if (join.plan.kind !== 'direct') {
+            throw new Error(
+                'Junction JOIN is not supported yet.'
+            );
+        }
+
+        const conditions = join.plan.conditions;
+
+        if (conditions.length === 0) {
+            throw new Error(
+                'Direct JOIN requires at least one condition.'
+            );
+        }
+
+        const joinType = join.join.type === 'inner'
+            ? 'INNER JOIN'
+            : join.join.type === 'left'
+                ? 'LEFT JOIN'
+                : undefined;
+
+        if (joinType === undefined) {
+            throw new Error(
+                `Unsupported JOIN type: ${String(join.join.type)}.`
+            );
+        }
+
+        const entity = join.target.metadata.entity;
+
+        const tableName = this.dialect.quoteIdentifier(
+            entity.tableName
+        );
+
+        const schema = entity.schema
+            ? `${this.dialect.quoteIdentifier(entity.schema)}.`
+            : '';
+
+        const alias = this.dialect.quoteIdentifier(
+            join.target.alias
+        );
+
+        const conditionsSql = conditions.map(condition =>
+            this.compileJoinCondition(condition)
+        );
+
+        if (join.join.on !== undefined) {
+            const predicate = this.predicates.compile(
+                join.join.on,
+                resolved,
+                context
+            );
+            conditionsSql.push(`(${predicate})`);
+        }
+
+        const on = conditionsSql.join(' AND ');
+
+        return (
+            `${joinType} ${schema}${tableName} ` +
+            `AS ${alias} ON ${on}`
+        );
+    }
+
+
+    private compileJoins(
+        resolved: ResolvedSelectQuery,
+        context: PostgresCompilationContext
+    ): string[] {
+        return resolved.joins.map(join =>
+            this.compileJoin(join, resolved, context)
+        );
     }
 
 

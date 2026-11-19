@@ -12,10 +12,15 @@ import {
     QuerySemanticResolver,
     column,
     getEntityMetadata,
-    OrmMetadataModel
+    OrmMetadataModel,
+    ManyToOne,
+    JoinColumn,
+    ManyToMany,
+    JoinTable
 } from '@tyorm/core';
 
 import type {
+    QueryJoin,
     QueryPredicate,
     ResolvedSelectQuery
 } from '@tyorm/core';
@@ -27,6 +32,7 @@ import {
 // ============================================================
 // FIXTURES
 // ============================================================
+
 
 function createFixture() {
 
@@ -54,9 +60,7 @@ function createFixture() {
         age!: number;
     }
 
-    const model = new OrmMetadataModel([
-        getEntityMetadata(User)
-    ]);
+    const model = new OrmMetadataModel([getEntityMetadata(User)]);
 
     const resolver = new QuerySemanticResolver(model);
 
@@ -68,6 +72,7 @@ function createFixture() {
         compiler
     };
 }
+
 
 function createSelect(
     entity: Function,
@@ -729,5 +734,228 @@ describe('PostgresSelectCompiler', () => {
             .toThrow(/Unknown property "unknownProperty"/);
     });
 
+
+    describe('Direct JOIN compilation', () => {
+
+        function createJoinFixture() {
+            @Entity({ name: 'departments' })
+            class Department {
+                @PrimaryKey({ type: 'uuid', name: 'department_id' })
+                id!: string;
+            }
+
+            @Entity({ name: 'users' })
+            class User {
+                @PrimaryKey({ type: 'uuid', name: 'user_id' })
+                id!: string;
+
+                @ManyToOne(() => Department)
+                @JoinColumn({
+                    name: 'department_id',
+                    referencedColumnName: 'department_id'
+                })
+                department!: Department;
+            }
+
+            const model = new OrmMetadataModel([
+                getEntityMetadata(User),
+                getEntityMetadata(Department)
+            ]);
+            const joins: QueryJoin[] = [
+                {
+                    kind: 'join',
+                    type: 'inner',
+                    sourceAlias: 'u',
+                    relation: 'department',
+                    alias: 'd'
+                }
+            ];
+
+            return {
+                model,
+                User,
+                resolver: new QuerySemanticResolver(model),
+                compiler: new PostgresSelectCompiler(),
+                query: {
+                    ...createSelect(User, [{ expression: column('u', 'id') }]),
+                    joins
+                }
+            };
+        }
+
+        it('compiles INNER JOIN with resolved conditions', () => {
+            const { model, User, resolver, compiler, query } = createJoinFixture();
+
+            expect(model.getEntity(User).relations).toMatchObject([
+                {
+                    propertyKey: 'department',
+                    isOwningSide: true,
+                    joinColumns: [
+                        { name: 'department_id', referencedColumnName: 'department_id' }
+                    ]
+                }
+            ]);
+
+            const resolved = resolver.resolve(query);
+            expect(resolved.joins[0]?.plan).toEqual({
+                kind: 'direct',
+                conditions: [
+                    {
+                        kind: 'resolved-join-condition',
+                        left: { tableAlias: 'u', columnName: 'department_id' },
+                        right: { tableAlias: 'd', columnName: 'department_id' }
+                    }
+                ]
+            });
+
+            expect(compiler.compile(resolved)).toEqual({
+                sql: 'SELECT "u"."user_id" FROM "users" AS "u" ' +
+                    'INNER JOIN "departments" AS "d" ' +
+                    'ON "u"."department_id" = "d"."department_id"',
+                parameters: []
+            });
+        });
+
+
+        it('quotes the target schema and combines composite key conditions', () => {
+            @Entity({ name: 'departments', schema: 'organization' })
+            class Department {
+                @PrimaryKey({ type: 'uuid', name: 'department_id' })
+                id!: string;
+
+                @PrimaryKey({ type: 'integer', name: 'region_id' })
+                region!: number;
+            }
+
+            @Entity({ name: 'users' })
+            class User {
+                @PrimaryKey({ type: 'uuid', name: 'user_id' })
+                id!: string;
+
+                @ManyToOne(() => Department)
+                @JoinColumn([
+                    { name: 'department_fk', referencedColumnName: 'department_id' },
+                    { name: 'region_fk', referencedColumnName: 'region_id' }
+                ])
+                department!: Department;
+            }
+
+            const resolver = new QuerySemanticResolver(new OrmMetadataModel([
+                getEntityMetadata(User),
+                getEntityMetadata(Department)
+            ]));
+            const resolved = resolver.resolve({
+                ...createSelect(User, [{ expression: column('u', 'id') }]),
+                joins: [
+                    {
+                        kind: 'join',
+                        type: 'inner',
+                        sourceAlias: 'u',
+                        relation: 'department',
+                        alias: 'd'
+                    }
+                ]
+            });
+
+            expect(new PostgresSelectCompiler().compile(resolved)).toEqual({
+                sql: 'SELECT "u"."user_id" FROM "users" AS "u" ' +
+                    'INNER JOIN "organization"."departments" AS "d" ' +
+                    'ON "u"."department_fk" = "d"."department_id" ' +
+                    'AND "u"."region_fk" = "d"."region_id"',
+                parameters: []
+            });
+        });
+
+        it('rejects a resolved plan that uses a junction table', () => {
+            @Entity({ name: 'roles' })
+            class Role {
+                @PrimaryKey({ type: 'uuid', name: 'role_id' })
+                id!: string;
+            }
+
+            @Entity({ name: 'users' })
+            class User {
+                @PrimaryKey({ type: 'uuid', name: 'user_id' })
+                id!: string;
+
+                @ManyToMany(() => Role)
+                @JoinTable()
+                roles!: Role[];
+            }
+
+            const resolver = new QuerySemanticResolver(new OrmMetadataModel([
+                getEntityMetadata(User),
+                getEntityMetadata(Role)
+            ]));
+            const resolved = resolver.resolve({
+                ...createSelect(User, [{ expression: column('u', 'id') }]),
+                joins: [
+                    {
+                        kind: 'join',
+                        type: 'inner',
+                        sourceAlias: 'u',
+                        relation: 'roles',
+                        alias: 'r'
+                    }
+                ]
+            });
+
+            expect(() => new PostgresSelectCompiler().compile(resolved))
+                .toThrow('Junction JOIN is not supported yet.');
+        });
+
+        it('binds ON parameters before WHERE and pagination', () => {
+            const { resolver, compiler, query } = createJoinFixture();
+            const resolved = resolver.resolve({
+                ...query,
+                selections: [{ expression: column('d', 'id') }],
+                joins: query.joins.map(join => ({
+                    ...join,
+                    on: {
+                        kind: 'logical',
+                        operator: 'or',
+                        predicates: [
+                            {
+                                kind: 'comparison',
+                                operator: 'eq',
+                                left: column('d', 'id'),
+                                right: { kind: 'parameter', name: 'department' }
+                            },
+                            {
+                                kind: 'comparison',
+                                operator: 'eq',
+                                left: column('d', 'id'),
+                                right: { kind: 'parameter', name: 'fallback' }
+                            }
+                        ]
+                    }
+                })),
+                where: {
+                    kind: 'comparison',
+                    operator: 'eq',
+                    left: column('u', 'id'),
+                    right: { kind: 'parameter', name: 'user' }
+                },
+                orderBy: [{ expression: column('d', 'id'), direction: 'asc' }],
+                limit: 10,
+                offset: 20
+            });
+
+            expect(compiler.compile(resolved, {
+                department: 'department-1',
+                fallback: 'department-2',
+                user: 'user-1'
+            })).toEqual({
+                sql: 'SELECT "d"."department_id" FROM "users" AS "u" ' +
+                    'INNER JOIN "departments" AS "d" ' +
+                    'ON "u"."department_id" = "d"."department_id" ' +
+                    'AND (("d"."department_id" = $1 OR "d"."department_id" = $2)) ' +
+                    'WHERE "u"."user_id" = $3 ORDER BY "d"."department_id" ASC ' +
+                    'LIMIT $4 OFFSET $5',
+                parameters: ['department-1', 'department-2', 'user-1', 10, 20]
+            });
+        });
+
+    });
 
 });
