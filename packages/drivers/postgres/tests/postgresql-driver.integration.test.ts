@@ -7,7 +7,8 @@ import {
     it
 } from 'vitest';
 
-import { PostgreSQLDriver } from '../src/index';
+import { PostgreSQLDriver, PostgresSelectCompiler } from '../src/index';
+import { createLeftJoinFixture } from './left-join.fixture';
 import { randomUUID } from 'node:crypto';
 import type { DatabaseConnection } from '@tyorm/core';
 
@@ -415,4 +416,59 @@ describe('PostgreSQLDriver Integration', () => {
             }
         }
     });
+
+    it('preserves unmatched root rows in direct LEFT JOIN queries', async () => {
+        const { resolver, inverseQuery, owningQuery } = createLeftJoinFixture();
+        const compiler = new PostgresSelectCompiler();
+        const connection = await driver.acquireConnection();
+
+        try {
+            await connection.beginTransaction();
+
+            await connection.execute({
+                sql: 'CREATE TEMP TABLE left_join_departments (' +
+                    'department_id integer PRIMARY KEY) ON COMMIT DROP'
+            });
+            await connection.execute({
+                sql: 'CREATE TEMP TABLE left_join_users (' +
+                    'user_id integer PRIMARY KEY, ' +
+                    'department_fk integer REFERENCES pg_temp.left_join_departments, ' +
+                    'status text NOT NULL) ON COMMIT DROP'
+            });
+            await connection.execute({
+                sql: 'INSERT INTO pg_temp.left_join_departments VALUES (1), (2), (3)'
+            });
+            await connection.execute({
+                sql: 'INSERT INTO pg_temp.left_join_users VALUES ' +
+                    '(10, 1, $1), (20, 2, $2), (30, NULL, $1)',
+                parameters: ['active', 'inactive']
+            });
+
+            const inverse = await connection.execute(compiler.compile(
+                resolver.resolve(inverseQuery),
+                { status: 'active' }
+            ));
+
+            expect(inverse.rows).toEqual([
+                { department_id: 1, user_id: 10 },
+                { department_id: 2, user_id: null },
+                { department_id: 3, user_id: null }
+            ]);
+
+            const owning = await connection.execute(compiler.compile(
+                resolver.resolve(owningQuery)
+            ));
+
+            expect(owning.rows).toEqual([
+                { user_id: 10, department_id: 1 },
+                { user_id: 20, department_id: 2 },
+                { user_id: 30, department_id: null }
+            ]);
+
+            await connection.commit();
+        } finally {
+            await connection.release();
+        }
+    });
+
 });

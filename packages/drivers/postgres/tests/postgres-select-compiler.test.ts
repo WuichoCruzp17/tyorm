@@ -29,6 +29,8 @@ import {
     PostgresSelectCompiler
 } from '../src/query/compiler/postgres-select-compiler';
 
+import { createLeftJoinFixture } from './left-join.fixture';
+
 // ============================================================
 // FIXTURES
 // ============================================================
@@ -956,6 +958,51 @@ describe('PostgresSelectCompiler', () => {
             });
         });
 
+    });
+
+
+    describe('LEFT JOIN compilation', () => {
+        it('uses the owning foreign key on the target of an inverse join', () => {
+            const { resolver, inverseQuery } = createLeftJoinFixture();
+            const resolved = resolver.resolve(inverseQuery);
+
+            expect(resolved.joins[0]?.plan).toEqual({
+                kind: 'direct',
+                conditions: [{
+                    kind: 'resolved-join-condition',
+                    left: { tableAlias: 'd', columnName: 'department_id' },
+                    right: { tableAlias: 'u', columnName: 'department_fk' }
+                }]
+            });
+
+            expect(new PostgresSelectCompiler().compile(resolved, { status: 'active' }))
+                .toEqual({
+                    sql: 'SELECT "d"."department_id", "u"."user_id" ' +
+                        'FROM "pg_temp"."left_join_departments" AS "d" ' +
+                        'LEFT JOIN "pg_temp"."left_join_users" AS "u" ' +
+                        'ON "d"."department_id" = "u"."department_fk" ' +
+                        'AND ("u"."status" = $1) ORDER BY "d"."department_id" ASC',
+                    parameters: ['active']
+                });
+        });
+
+        it('uses the nullable foreign key on the source of an owning join', () => {
+            const { resolver, owningQuery } = createLeftJoinFixture();
+            const resolved = resolver.resolve(owningQuery);
+
+            expect(resolved.aliases.get('u')?.metadata.relations).toMatchObject([
+                { propertyKey: 'department', isOwningSide: true, nullable: true }
+            ]);
+
+            expect(new PostgresSelectCompiler().compile(resolved)).toEqual({
+                sql: 'SELECT "u"."user_id", "d"."department_id" ' +
+                    'FROM "pg_temp"."left_join_users" AS "u" ' +
+                    'LEFT JOIN "pg_temp"."left_join_departments" AS "d" ' +
+                    'ON "u"."department_fk" = "d"."department_id" ' +
+                    'ORDER BY "u"."user_id" ASC',
+                parameters: []
+            });
+        });
     });
 
 });

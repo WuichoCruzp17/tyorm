@@ -187,10 +187,18 @@ Se verificaron los metadatos de la relación, el plan directo, el SQL completo, 
 
 Validación del 19 de noviembre de 2026 con el índice compilado de core regenerado. Ambos typecheck pasaron. Core pasó 258 pruebas en 20 archivos. PostgreSQL pasó 104 pruebas en 8 archivos, incluidas las 26 del compilador SELECT. Se excluyeron las suites de integración con una base de datos.
 
+### 7.1 Fase 5.2.2.6.2 — LEFT JOIN directo y relaciones inversas
+
+El pipeline existente compila `LEFT JOIN` en ambos sentidos de una relación bidireccional `ManyToOne` / `OneToMany`. El fixture usa una clave foránea local `department_fk` y una clave primaria referenciada `department_id` para comprobar la orientación de las columnas.
+
+La prueba de integración confirma que un filtro en `ON` conserva los departamentos sin usuarios o sin usuarios que cumplan el filtro. También confirma que un usuario con clave foránea nula sigue apareciendo en el JOIN propietario.
+
+Validación del 19 de noviembre de 2026. Ambos typecheck pasaron. Core pasó 258 pruebas. PostgreSQL pasó 106 pruebas sin base de datos, incluidas las 28 del compilador SELECT. El caso nuevo de integración pasó contra PostgreSQL. Las demás pruebas de integración quedaron fuera de la ejecución.
+
 ## 8. Hoja de ruta siguiente
 
 1. **5.2.2.6.1:** completada y validada según la sección 7.
-2. **5.2.2.6.2:** LEFT JOIN, OneToMany e inversas; verificar orientación de columnas y nullable.
+2. **5.2.2.6.2:** completada y validada según la sección 7.1.
 3. **5.2.2.6.3:** ManyToMany: dos JOIN mediante `ResolvedJunctionJoin.table`, `sourceConditions`, `targetConditions`; manejar alias internos y esquema.
 4. **5.2.2.6.4:** integración: múltiples JOIN encadenados, condiciones `join.on`, alias, WHERE, ORDER BY, paginación, parámetros, errores y claves compuestas.
 5. Proseguir las capacidades SQL restantes según el diseño real del proyecto (no asumir una lista cerrada sin revisar el roadmap del repo).
