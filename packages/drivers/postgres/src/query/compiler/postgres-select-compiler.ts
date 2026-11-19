@@ -25,27 +25,25 @@ import {
 export class PostgresSelectCompiler implements SqlCompiler {
 
 
+
     constructor(
         private readonly dialect: SqlDialect =
             new PostgresSqlDialect(),
+        private readonly expressions =
+            new PostgresExpressionCompiler(dialect),
         private readonly predicates =
-            new PostgresPredicateCompiler(
-                new PostgresExpressionCompiler(dialect)
-            )
+            new PostgresPredicateCompiler(expressions)
     ) { }
+
 
     compile(
         resolved: ResolvedSelectQuery,
         parameters: Readonly<Record<string, unknown>> = {}
     ): CompiledQuery {
 
-        // Todavía no soportamos JOIN ni ORDER BY.
-        if (
-            resolved.query.joins.length > 0 ||
-            resolved.query.orderBy.length > 0
-        ) {
+        if (resolved.query.joins.length > 0) {
             throw new Error(
-                'JOIN and ORDER BY are not supported yet.'
+                'JOIN is not supported yet.'
             );
         }
 
@@ -77,6 +75,12 @@ export class PostgresSelectCompiler implements SqlCompiler {
             );
 
             parts.push(`WHERE ${predicateSql}`);
+        }
+
+        if (resolved.query.orderBy.length > 0) {
+            parts.push(
+                this.compileOrderBy(resolved, context)
+            );
         }
 
         return Object.freeze({
@@ -190,4 +194,35 @@ export class PostgresSelectCompiler implements SqlCompiler {
 
         return reference;
     }
+
+
+    private compileOrderBy(
+        resolved: ResolvedSelectQuery,
+        context: PostgresCompilationContext
+    ): string {
+
+        const orders = resolved.query.orderBy;
+
+        if (orders.length === 0) {
+            return '';
+        }
+
+        const expressions = orders.map(order => {
+
+            const expression = this.expressions.compile(
+                order.expression,
+                resolved,
+                context
+            );
+
+            const direction = order.direction === 'asc'
+                ? 'ASC'
+                : 'DESC';
+
+            return `${expression} ${direction}`;
+        });
+
+        return `ORDER BY ${expressions.join(', ')}`;
+    }
+
 }

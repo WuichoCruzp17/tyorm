@@ -464,4 +464,139 @@ describe('PostgresSelectCompiler', () => {
             );
     });
 
+
+    it('compiles ORDER BY ASC', () => {
+        const { User, resolver, compiler } =
+            createFixture();
+
+        const query = {
+            ...createSelect(User, [
+                {
+                    expression: column('u', 'id')
+                }
+            ]),
+            orderBy: [
+                {
+                    expression: column('u', 'firstName'),
+                    direction: 'asc' as const
+                }
+            ]
+        };
+
+        const compiled = compiler.compile(
+            resolver.resolve(query)
+        );
+
+        expect(compiled.sql).toBe(
+            'SELECT "u"."user_id" ' +
+            'FROM "users" AS "u" ' +
+            'ORDER BY "u"."first_name" ASC'
+        );
+
+        expect(compiled.parameters).toEqual([]);
+    });
+
+
+    it('compiles multiple ORDER BY expressions', () => {
+        const { User, resolver, compiler } =
+            createFixture();
+
+        const query = {
+            ...createSelect(User, [
+                {
+                    expression: column('u', 'id')
+                }
+            ]),
+            orderBy: [
+                {
+                    expression: column('u', 'firstName'),
+                    direction: 'asc' as const
+                },
+                {
+                    expression: column('u', 'age'),
+                    direction: 'desc' as const
+                }
+            ]
+        };
+
+        const compiled = compiler.compile(
+            resolver.resolve(query)
+        );
+
+        expect(compiled.sql).toBe(
+            'SELECT "u"."user_id" ' +
+            'FROM "users" AS "u" ' +
+            'ORDER BY "u"."first_name" ASC, "u"."age" DESC'
+        );
+    });
+
+
+    it('compiles WHERE followed by ORDER BY', () => {
+        const { User, resolver, compiler } =
+            createFixture();
+
+        const query = {
+            ...createSelect(User, [
+                {
+                    expression: column('u', 'id')
+                }
+            ]),
+            where: {
+                kind: 'comparison' as const,
+                operator: 'gte' as const,
+                left: column('u', 'age'),
+                right: {
+                    kind: 'parameter' as const,
+                    name: 'minimumAge'
+                }
+            },
+            orderBy: [
+                {
+                    expression: column('u', 'firstName'),
+                    direction: 'asc' as const
+                }
+            ]
+        };
+
+        const compiled = compiler.compile(
+            resolver.resolve(query),
+            {
+                minimumAge: 18
+            }
+        );
+
+        expect(compiled.sql).toBe(
+            'SELECT "u"."user_id" ' +
+            'FROM "users" AS "u" ' +
+            'WHERE "u"."age" >= $1 ' +
+            'ORDER BY "u"."first_name" ASC'
+        );
+
+        expect(compiled.parameters).toEqual([18]);
+    });
+
+
+    it('rejects unknown ORDER BY properties', () => {
+        const { User, resolver } =
+            createFixture();
+
+        const query = {
+            ...createSelect(User, [
+                {
+                    expression: column('u', 'id')
+                }
+            ]),
+            orderBy: [
+                {
+                    expression: column('u', 'unknownProperty'),
+                    direction: 'asc' as const
+                }
+            ]
+        };
+
+        expect(() => resolver.resolve(query))
+            .toThrow(/Unknown property "unknownProperty"/);
+    });
+
+
 });
