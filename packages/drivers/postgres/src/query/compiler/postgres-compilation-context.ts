@@ -14,7 +14,9 @@ export class PostgresCompilationContext {
             new PostgresSqlDialect()
     ) { }
 
-
+    /**
+     * Vincula un parámetro nombrado.
+     */
     bind(name: string): string {
         if (!Object.hasOwn(this.parameters, name)) {
             throw new Error(
@@ -30,6 +32,23 @@ export class PostgresCompilationContext {
             );
         }
 
+        return this.bindValue(value);
+    }
+
+    /**
+     * Vincula un valor directamente.
+     *
+     * Se utiliza para literales del AST,
+     * manteniendo todos los valores separados
+     * del texto SQL.
+     */
+    bindValue(value: unknown): string {
+        if (value === undefined) {
+            throw new Error(
+                'SQL parameter value cannot be undefined.'
+            );
+        }
+
         const position = this.values.length + 1;
         const placeholder = this.dialect.parameter(position);
 
@@ -38,7 +57,10 @@ export class PostgresCompilationContext {
         return placeholder;
     }
 
-
+    /**
+     * Devuelve una copia inmutable del arreglo
+     * de parámetros compilados.
+     */
     getParameters(): readonly unknown[] {
         return Object.freeze([...this.values]);
     }

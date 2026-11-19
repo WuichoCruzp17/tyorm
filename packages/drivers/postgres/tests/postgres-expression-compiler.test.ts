@@ -129,18 +129,69 @@ describe('PostgresExpressionCompiler', () => {
         );
     });
 
-    it('rejects literal expressions for now', () => {
+
+    it('compiles string literals as parameters', () => {
         const context = new PostgresCompilationContext();
 
-        expect(() => compiler.compile(
+        const sql = compiler.compile(
             {
                 kind: 'literal',
                 value: 'ACTIVE'
             },
             resolved,
             context
-        )).toThrow(
-            'Literal expressions are not supported yet.'
         );
+
+        expect(sql).toBe('$1');
+        expect(context.getParameters()).toEqual(['ACTIVE']);
     });
+
+    it('compiles numeric literals as parameters', () => {
+        const context = new PostgresCompilationContext();
+
+        const sql = compiler.compile(
+            {
+                kind: 'literal',
+                value: 25
+            },
+            resolved,
+            context
+        );
+
+        expect(sql).toBe('$1');
+        expect(context.getParameters()).toEqual([25]);
+    });
+
+    it('compiles boolean literals as parameters', () => {
+        const context = new PostgresCompilationContext();
+
+        const sql = compiler.compile(
+            {
+                kind: 'literal',
+                value: false
+            },
+            resolved,
+            context
+        );
+
+        expect(sql).toBe('$1');
+        expect(context.getParameters()).toEqual([false]);
+    });
+
+    it('compiles null literals as parameters', () => {
+        const context = new PostgresCompilationContext();
+
+        const sql = compiler.compile(
+            {
+                kind: 'literal',
+                value: null
+            },
+            resolved,
+            context
+        );
+
+        expect(sql).toBe('$1');
+        expect(context.getParameters()).toEqual([null]);
+    });
+
 });

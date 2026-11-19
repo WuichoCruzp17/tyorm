@@ -116,4 +116,39 @@ describe('PostgresCompilationContext', () => {
         ]);
     });
 
+
+    it('binds a literal value', () => {
+        const context = new PostgresCompilationContext();
+
+        expect(context.bindValue('ACTIVE')).toBe('$1');
+        expect(context.getParameters()).toEqual(['ACTIVE']);
+    });
+
+    it('shares positions between named and literal values', () => {
+        const context = new PostgresCompilationContext({
+            name: 'Luis'
+        });
+
+        expect(context.bind('name')).toBe('$1');
+        expect(context.bindValue(25)).toBe('$2');
+        expect(context.bind('name')).toBe('$3');
+
+        expect(context.getParameters()).toEqual([
+            'Luis',
+            25,
+            'Luis'
+        ]);
+    });
+
+    it('rejects undefined literal values without changing state', () => {
+        const context = new PostgresCompilationContext();
+
+        expect(() => context.bindValue(undefined))
+            .toThrow('SQL parameter value cannot be undefined.');
+
+        expect(context.bindValue('ACTIVE')).toBe('$1');
+        expect(context.getParameters()).toEqual(['ACTIVE']);
+    });
+
+
 });

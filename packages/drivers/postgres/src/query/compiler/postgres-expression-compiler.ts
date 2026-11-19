@@ -64,9 +64,7 @@ export class PostgresExpressionCompiler {
                 return 'NULL';
 
             case 'literal':
-                throw new Error(
-                    'Literal expressions are not supported yet.'
-                );
+                return context.bindValue(expression.value);
 
             default:
                 return this.assertNever(expression);
