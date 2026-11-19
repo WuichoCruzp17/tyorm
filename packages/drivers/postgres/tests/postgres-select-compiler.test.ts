@@ -418,27 +418,158 @@ describe('PostgresSelectCompiler', () => {
             );
     });
 
-    // --------------------------------------------------------
-    // UNSUPPORTED PAGINATION
-    // --------------------------------------------------------
 
-    it('rejects LIMIT until implemented', () => {
-        const { resolved, compiler } =
-            createResolvedFixture();
+    describe('LIMIT and OFFSET', () => {
 
-        const query: ResolvedSelectQuery = {
-            ...resolved,
-            query: {
-                ...resolved.query,
-                limit: 10
-            }
-        };
+        it('compiles SELECT with LIMIT', () => {
+            const { resolved, compiler } =
+                createResolvedFixture();
 
-        expect(() => compiler.compile(query))
-            .toThrow(
-                'LIMIT and OFFSET are not supported yet.'
+            const query: ResolvedSelectQuery = {
+                ...resolved,
+                query: {
+                    ...resolved.query,
+                    limit: 10
+                }
+            };
+
+            const result = compiler.compile(query);
+
+            expect(result.sql).toBe(
+                'SELECT "u"."user_id", "u"."first_name" ' +
+                'FROM "users" AS "u" LIMIT $1'
             );
+
+            expect(result.parameters).toEqual([10]);
+        });
+
+        it('compiles SELECT with OFFSET', () => {
+            const { resolved, compiler } =
+                createResolvedFixture();
+
+            const query: ResolvedSelectQuery = {
+                ...resolved,
+                query: {
+                    ...resolved.query,
+                    offset: 20
+                }
+            };
+
+            const result = compiler.compile(query);
+
+            expect(result.sql).toBe(
+                'SELECT "u"."user_id", "u"."first_name" ' +
+                'FROM "users" AS "u" OFFSET $1'
+            );
+
+            expect(result.parameters).toEqual([20]);
+        });
+
+        it('compiles SELECT with LIMIT and OFFSET', () => {
+            const { resolved, compiler } =
+                createResolvedFixture();
+
+            const query: ResolvedSelectQuery = {
+                ...resolved,
+                query: {
+                    ...resolved.query,
+                    limit: 10,
+                    offset: 20
+                }
+            };
+
+            const result = compiler.compile(query);
+
+            expect(result.sql).toBe(
+                'SELECT "u"."user_id", "u"."first_name" ' +
+                'FROM "users" AS "u" LIMIT $1 OFFSET $2'
+            );
+
+            expect(result.parameters).toEqual([10, 20]);
+        });
+
+        it('compiles LIMIT 0 and OFFSET 0', () => {
+            const { resolved, compiler } =
+                createResolvedFixture();
+
+            const query: ResolvedSelectQuery = {
+                ...resolved,
+                query: {
+                    ...resolved.query,
+                    limit: 0,
+                    offset: 0
+                }
+            };
+
+            const result = compiler.compile(query);
+
+            expect(result.sql).toContain(
+                'LIMIT $1 OFFSET $2'
+            );
+
+            expect(result.parameters).toEqual([0, 0]);
+        });
+
+        it('preserves parameter order with WHERE and pagination', () => {
+            const { resolved, compiler } =
+                createResolvedFixture({
+                    kind: 'comparison',
+                    operator: 'gte',
+                    left: column('u', 'age'),
+                    right: {
+                        kind: 'parameter',
+                        name: 'minimumAge'
+                    }
+                });
+
+            const query: ResolvedSelectQuery = {
+                ...resolved,
+                query: {
+                    ...resolved.query,
+                    limit: 10,
+                    offset: 20
+                }
+            };
+
+            const result = compiler.compile(query, {
+                minimumAge: 18
+            });
+
+            expect(result.sql).toBe(
+                'SELECT "u"."user_id", "u"."first_name" ' +
+                'FROM "users" AS "u" ' +
+                'WHERE "u"."age" >= $1 ' +
+                'LIMIT $2 OFFSET $3'
+            );
+
+            expect(result.parameters).toEqual([
+                18,
+                10,
+                20
+            ]);
+        });
+
+        it('returns frozen pagination parameters', () => {
+            const { resolved, compiler } =
+                createResolvedFixture();
+
+            const query: ResolvedSelectQuery = {
+                ...resolved,
+                query: {
+                    ...resolved.query,
+                    limit: 10
+                }
+            };
+
+            const result = compiler.compile(query);
+
+            expect(Object.isFrozen(result)).toBe(true);
+            expect(Object.isFrozen(result.parameters))
+                .toBe(true);
+        });
+
     });
+
 
     // --------------------------------------------------------
     // UNRESOLVED COLUMN DEFENSE

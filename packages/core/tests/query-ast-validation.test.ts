@@ -17,8 +17,10 @@ import {
     isNull
 } from '../src/query';
 
+
+
 function createQuery() {
-    class User {}
+    class User { }
 
     return {
         kind: 'select' as const,
@@ -273,4 +275,132 @@ describe('Query AST normalization', () => {
             })
         ).toThrow(QueryAstError);
     });
+});
+
+describe('QueryAstValidator - ORDER BY', () => {
+
+    class User { }
+
+    const validator = new QueryAstValidator();
+
+    function createQuery(
+        orderBy: unknown
+    ) {
+        return {
+            kind: 'select',
+            from: {
+                entity: User,
+                alias: 'u'
+            },
+            selections: [
+                {
+                    expression: column('u', 'id')
+                }
+            ],
+            joins: [],
+            where: undefined,
+            orderBy,
+            distinct: false
+        };
+    }
+
+    it.each([
+        'asc',
+        'desc'
+    ])(
+        'accepts ORDER BY direction %s',
+        direction => {
+
+            const query = createQuery([
+                {
+                    expression: column('u', 'id'),
+                    direction
+                }
+            ]);
+
+            expect(() =>
+                validator.validate(query)
+            ).not.toThrow();
+        }
+    );
+
+    it.each([
+        'ASC',
+        'DESC',
+        'invalid',
+        '',
+        null,
+        undefined,
+        123,
+        true
+    ])(
+        'rejects invalid ORDER BY direction %s',
+        direction => {
+
+            const query = createQuery([
+                {
+                    expression: column('u', 'id'),
+                    direction
+                }
+            ]);
+
+            expect(() =>
+                validator.validate(query)
+            ).toThrow(
+                'Invalid ORDER BY direction.'
+            );
+        }
+    );
+
+    it.each([
+        null,
+        {},
+        'id',
+        123
+    ])(
+        'rejects ORDER BY when it is not an array',
+        orderBy => {
+
+            expect(() =>
+                validator.validate(
+                    createQuery(orderBy)
+                )
+            ).toThrow(
+                'ORDER BY must be an array.'
+            );
+        }
+    );
+
+    it('rejects invalid ORDER BY expressions', () => {
+
+        const query = createQuery([
+            {
+                expression: {
+                    kind: 'unknown'
+                },
+                direction: 'asc'
+            }
+        ]);
+
+        expect(() =>
+            validator.validate(query)
+        ).toThrow(QueryAstError);
+    });
+
+    it('rejects unknown ORDER BY aliases', () => {
+
+        const query = createQuery([
+            {
+                expression: column('unknown', 'id'),
+                direction: 'asc'
+            }
+        ]);
+
+        expect(() =>
+            validator.validate(query)
+        ).toThrow(
+            'Unknown column alias: unknown.'
+        );
+    });
+
 });

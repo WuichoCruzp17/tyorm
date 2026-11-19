@@ -47,16 +47,6 @@ export class PostgresSelectCompiler implements SqlCompiler {
             );
         }
 
-        // Evitamos descartar silenciosamente la paginación.
-        if (
-            resolved.query.limit !== undefined ||
-            resolved.query.offset !== undefined
-        ) {
-            throw new Error(
-                'LIMIT and OFFSET are not supported yet.'
-            );
-        }
-
         const context = new PostgresCompilationContext(
             parameters,
             this.dialect
@@ -82,6 +72,10 @@ export class PostgresSelectCompiler implements SqlCompiler {
                 this.compileOrderBy(resolved, context)
             );
         }
+
+        parts.push(
+            ...this.compilePagination(resolved, context)
+        );
 
         return Object.freeze({
             sql: parts.join(' '),
@@ -224,5 +218,31 @@ export class PostgresSelectCompiler implements SqlCompiler {
 
         return `ORDER BY ${expressions.join(', ')}`;
     }
+
+
+    private compilePagination(
+        resolved: ResolvedSelectQuery,
+        context: PostgresCompilationContext
+    ): string[] {
+
+        const parts: string[] = [];
+
+        const { limit, offset } = resolved.query;
+
+        if (limit !== undefined) {
+            const placeholder = context.bindValue(limit);
+
+            parts.push(`LIMIT ${placeholder}`);
+        }
+
+        if (offset !== undefined) {
+            const placeholder = context.bindValue(offset);
+
+            parts.push(`OFFSET ${placeholder}`);
+        }
+
+        return parts;
+    }
+
 
 }
