@@ -15,11 +15,18 @@ import {
     OrmMetadataModel
 } from '@tyorm/core';
 
-import {initializeSymbolMetadata} from "../../postgres/src/runtime";
+import type {
+    QueryPredicate,
+    ResolvedSelectQuery
+} from '@tyorm/core';
 
 import {
     PostgresSelectCompiler
 } from '../src/query/compiler/postgres-select-compiler';
+
+// ============================================================
+// FIXTURES
+// ============================================================
 
 function createFixture() {
 
@@ -39,6 +46,12 @@ function createFixture() {
             name: 'first_name'
         })
         firstName!: string;
+
+        @Column({
+            type: 'integer',
+            name: 'age'
+        })
+        age!: number;
     }
 
     const model = new OrmMetadataModel([
@@ -76,16 +89,87 @@ function createSelect(
     };
 }
 
-describe('PostgresSelectCompiler', () => {
+/**
+ * Construye una consulta completa antes de resolverla.
+ *
+ * Es importante que WHERE exista en el AST antes de llamar
+ * a QuerySemanticResolver.resolve(), porque el resolvedor
+ * registra las columnas utilizadas en los predicados.
+ */
+function createResolvedFixture(
+    where?: QueryPredicate
+) {
+    const { User, resolver, compiler } =
+        createFixture();
 
-    it('initializes Symbol.metadata', () => {
-    const symbolConstructor = Symbol as SymbolConstructor & {
-        metadata?: symbol;
+    const baseQuery = createSelect(User, [
+        {
+            expression: column('u', 'id')
+        },
+        {
+            expression: column('u', 'firstName')
+        }
+    ]);
+
+    const query = {
+        ...baseQuery,
+        ...(where !== undefined ? { where } : {})
     };
 
-    expect(symbolConstructor.metadata).toBeDefined();
-    expect(typeof symbolConstructor.metadata).toBe('symbol');
-});
+    const resolved = resolver.resolve(query);
+
+    return {
+        resolved,
+        compiler
+    };
+}
+
+/**
+ * Permite construir deliberadamente un ResolvedSelectQuery
+ * inconsistente para probar las defensas del compilador.
+ *
+ * No debe utilizarse para el flujo normal de resolución.
+ */
+function withWhere(
+    resolved: ResolvedSelectQuery,
+    where: QueryPredicate
+): ResolvedSelectQuery {
+    return {
+        ...resolved,
+        query: {
+            ...resolved.query,
+            where
+        }
+    };
+}
+
+// ============================================================
+// TESTS
+// ============================================================
+
+describe('PostgresSelectCompiler', () => {
+
+    // --------------------------------------------------------
+    // METADATA
+    // --------------------------------------------------------
+
+    it('initializes Symbol.metadata', () => {
+        const symbolConstructor =
+            Symbol as SymbolConstructor & {
+                metadata?: symbol;
+            };
+
+        expect(symbolConstructor.metadata)
+            .toBeDefined();
+
+        expect(typeof symbolConstructor.metadata)
+            .toBe('symbol');
+    });
+
+    // --------------------------------------------------------
+    // SELECT
+    // --------------------------------------------------------
+
     it('compiles a single selected column', () => {
         const { User, resolver, compiler } =
             createFixture();
@@ -127,6 +211,8 @@ describe('PostgresSelectCompiler', () => {
             'SELECT "u"."user_id", "u"."first_name" ' +
             'FROM "users" AS "u"'
         );
+
+        expect(compiled.parameters).toEqual([]);
     });
 
     it('compiles SELECT DISTINCT', () => {
@@ -151,6 +237,8 @@ describe('PostgresSelectCompiler', () => {
             'SELECT DISTINCT "u"."first_name" ' +
             'FROM "users" AS "u"'
         );
+
+        expect(compiled.parameters).toEqual([]);
     });
 
     it('rejects empty selections', () => {
@@ -185,27 +273,195 @@ describe('PostgresSelectCompiler', () => {
             .toBe(true);
     });
 
-    it('rejects unsupported WHERE clauses', () => {
-        const { User, resolver, compiler } =
-            createFixture();
+    // --------------------------------------------------------
+    // WHERE - IS NULL
+    // --------------------------------------------------------
 
-        const query = {
-            ...createSelect(User, [
-                {
-                    expression: column('u', 'id')
-                }
-            ]),
-            where: {
-                kind: 'is-null' as const,
+    it('compiles SELECT with IS NULL WHERE', () => {
+        const { resolved, compiler } =
+            createResolvedFixture({
+                kind: 'is-null',
                 expression: column('u', 'firstName'),
                 negated: false
+            });
+
+        const result = compiler.compile(resolved);
+
+        expect(result.sql).toBe(
+            'SELECT "u"."user_id", "u"."first_name" ' +
+            'FROM "users" AS "u" ' +
+            'WHERE "u"."first_name" IS NULL'
+        );
+
+        expect(result.parameters).toEqual([]);
+    });
+
+    // --------------------------------------------------------
+    // WHERE - COMPARISON
+    // --------------------------------------------------------
+
+    it('compiles SELECT with WHERE comparison', () => {
+        const { resolved, compiler } =
+            createResolvedFixture({
+                kind: 'comparison',
+                operator: 'gte',
+                left: column('u', 'age'),
+                right: {
+                    kind: 'parameter',
+                    name: 'minimumAge'
+                }
+            });
+
+        const result = compiler.compile(resolved, {
+            minimumAge: 18
+        });
+
+        expect(result.sql).toBe(
+            'SELECT "u"."user_id", "u"."first_name" ' +
+            'FROM "users" AS "u" ' +
+            'WHERE "u"."age" >= $1'
+        );
+
+        expect(result.parameters).toEqual([18]);
+    });
+
+    // --------------------------------------------------------
+    // WHERE - LOGICAL + BETWEEN
+    // --------------------------------------------------------
+
+    it('compiles SELECT with nested WHERE predicates', () => {
+        const { resolved, compiler } =
+            createResolvedFixture({
+                kind: 'logical',
+                operator: 'and',
+                predicates: [
+                    {
+                        kind: 'between',
+                        expression: column('u', 'age'),
+                        lower: {
+                            kind: 'literal',
+                            value: 18
+                        },
+                        upper: {
+                            kind: 'literal',
+                            value: 65
+                        },
+                        negated: false
+                    },
+                    {
+                        kind: 'comparison',
+                        operator: 'eq',
+                        left: column('u', 'firstName'),
+                        right: {
+                            kind: 'parameter',
+                            name: 'name'
+                        }
+                    }
+                ]
+            });
+
+        const result = compiler.compile(resolved, {
+            name: 'Luis'
+        });
+
+        expect(result.sql).toBe(
+            'SELECT "u"."user_id", "u"."first_name" ' +
+            'FROM "users" AS "u" ' +
+            'WHERE (("u"."age" BETWEEN $1 AND $2) ' +
+            'AND "u"."first_name" = $3)'
+        );
+
+        expect(result.parameters).toEqual([
+            18,
+            65,
+            'Luis'
+        ]);
+    });
+
+    // --------------------------------------------------------
+    // SELECT WITHOUT WHERE
+    // --------------------------------------------------------
+
+    it('preserves SELECT without WHERE', () => {
+        const { resolved, compiler } =
+            createResolvedFixture();
+
+        const result = compiler.compile(resolved);
+
+        expect(result.sql).toBe(
+            'SELECT "u"."user_id", "u"."first_name" ' +
+            'FROM "users" AS "u"'
+        );
+
+        expect(result.parameters).toEqual([]);
+    });
+
+    // --------------------------------------------------------
+    // MISSING PARAMETERS
+    // --------------------------------------------------------
+
+    it('rejects missing WHERE parameters', () => {
+        const { resolved, compiler } =
+            createResolvedFixture({
+                kind: 'comparison',
+                operator: 'eq',
+                left: column('u', 'age'),
+                right: {
+                    kind: 'parameter',
+                    name: 'age'
+                }
+            });
+
+        expect(() => compiler.compile(resolved))
+            .toThrow(
+                'Missing query parameter "age".'
+            );
+    });
+
+    // --------------------------------------------------------
+    // UNSUPPORTED PAGINATION
+    // --------------------------------------------------------
+
+    it('rejects LIMIT until implemented', () => {
+        const { resolved, compiler } =
+            createResolvedFixture();
+
+        const query: ResolvedSelectQuery = {
+            ...resolved,
+            query: {
+                ...resolved.query,
+                limit: 10
             }
         };
 
-        const resolved = resolver.resolve(query);
+        expect(() => compiler.compile(query))
+            .toThrow(
+                'LIMIT and OFFSET are not supported yet.'
+            );
+    });
 
-        expect(() => compiler.compile(resolved))
-            .toThrow(/not supported/);
+    // --------------------------------------------------------
+    // UNRESOLVED COLUMN DEFENSE
+    // --------------------------------------------------------
+
+    it('rejects unresolved WHERE columns', () => {
+        const { resolved, compiler } =
+            createResolvedFixture();
+
+        const query = withWhere(resolved, {
+            kind: 'comparison',
+            operator: 'eq',
+            left: column('u', 'unknownProperty'),
+            right: {
+                kind: 'literal',
+                value: 10
+            }
+        });
+
+        expect(() => compiler.compile(query))
+            .toThrow(
+                'Unresolved column "u.unknownProperty".'
+            );
     });
 
 });

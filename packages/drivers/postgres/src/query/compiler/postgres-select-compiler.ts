@@ -11,44 +11,80 @@ import {
     PostgresSqlDialect
 } from './postgres-sql-dialect';
 
+import {
+    PostgresCompilationContext
+} from './postgres-compilation-context';
+
+import {
+    PostgresPredicateCompiler
+} from './postgres-predicate-compiler';
+
+import {
+    PostgresExpressionCompiler
+} from './postgres-expression-compiler';
 export class PostgresSelectCompiler implements SqlCompiler {
+
 
     constructor(
         private readonly dialect: SqlDialect =
-            new PostgresSqlDialect()
-    ) {}
+            new PostgresSqlDialect(),
+        private readonly predicates =
+            new PostgresPredicateCompiler(
+                new PostgresExpressionCompiler(dialect)
+            )
+    ) { }
 
     compile(
         resolved: ResolvedSelectQuery,
         parameters: Readonly<Record<string, unknown>> = {}
     ): CompiledQuery {
 
-        // WHERE y parámetros se implementarán en 5.2.2.2.
-        // No aceptar consultas que todavía no sabemos compilar.
+        // Todavía no soportamos JOIN ni ORDER BY.
         if (
-            resolved.query.where !== undefined ||
             resolved.query.joins.length > 0 ||
             resolved.query.orderBy.length > 0
         ) {
             throw new Error(
-                'WHERE, JOIN and ORDER BY are not supported in phase 5.2.2.1.'
+                'JOIN and ORDER BY are not supported yet.'
             );
         }
 
-        if (Object.keys(parameters).length > 0) {
+        // Evitamos descartar silenciosamente la paginación.
+        if (
+            resolved.query.limit !== undefined ||
+            resolved.query.offset !== undefined
+        ) {
             throw new Error(
-                'Parameters are not supported in phase 5.2.2.1.'
+                'LIMIT and OFFSET are not supported yet.'
             );
         }
+
+        const context = new PostgresCompilationContext(
+            parameters,
+            this.dialect
+        );
 
         const select = this.compileSelect(resolved);
         const from = this.compileFrom(resolved);
 
+        const parts = [select, from];
+
+        if (resolved.query.where !== undefined) {
+            const predicateSql = this.predicates.compile(
+                resolved.query.where,
+                resolved,
+                context
+            );
+
+            parts.push(`WHERE ${predicateSql}`);
+        }
+
         return Object.freeze({
-            sql: `${select} ${from}`,
-            parameters: Object.freeze([])
+            sql: parts.join(' '),
+            parameters: context.getParameters()
         });
     }
+
 
     private compileSelect(
         resolved: ResolvedSelectQuery
