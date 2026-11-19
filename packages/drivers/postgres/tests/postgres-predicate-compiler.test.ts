@@ -660,4 +660,366 @@ describe('PostgresPredicateCompiler', () => {
     });
 
 
+    describe('nested predicates and BETWEEN precedence', () => {
+
+        it('compiles NOT (age BETWEEN ...)', () => {
+            const context = new PostgresCompilationContext();
+
+            const predicate: QueryPredicate = {
+                kind: 'not',
+                predicate: {
+                    kind: 'between',
+                    expression: {
+                        kind: 'column',
+                        alias: 'u',
+                        property: 'age'
+                    },
+                    lower: {
+                        kind: 'literal',
+                        value: 18
+                    },
+                    upper: {
+                        kind: 'literal',
+                        value: 65
+                    },
+                    negated: false
+                }
+            };
+
+            const sql = compiler.compile(
+                predicate,
+                resolved,
+                context
+            );
+
+            expect(sql).toBe(
+                'NOT ("u"."age" BETWEEN $1 AND $2)'
+            );
+
+            expect(context.getParameters()).toEqual([
+                18, 65
+            ]);
+        });
+
+        it('compiles BETWEEN combined with AND', () => {
+            const context = new PostgresCompilationContext({
+                status: 'ACTIVE'
+            });
+
+            const predicate: QueryPredicate = {
+                kind: 'logical',
+                operator: 'and',
+                predicates: [
+                    {
+                        kind: 'between',
+                        expression: {
+                            kind: 'column',
+                            alias: 'u',
+                            property: 'age'
+                        },
+                        lower: {
+                            kind: 'literal',
+                            value: 18
+                        },
+                        upper: {
+                            kind: 'literal',
+                            value: 65
+                        },
+                        negated: false
+                    },
+                    {
+                        kind: 'comparison',
+                        operator: 'eq',
+                        left: {
+                            kind: 'column',
+                            alias: 'u',
+                            property: 'firstName'
+                        },
+                        right: {
+                            kind: 'parameter',
+                            name: 'status'
+                        }
+                    }
+                ]
+            };
+
+            const sql = compiler.compile(
+                predicate,
+                resolved,
+                context
+            );
+
+            expect(sql).toBe(
+                '("u"."age" BETWEEN $1 AND $2 AND "u"."first_name" = $3)'
+            );
+
+            expect(context.getParameters()).toEqual([
+                18,
+                65,
+                'ACTIVE'
+            ]);
+        });
+
+        it('compiles BETWEEN combined with OR', () => {
+            const context = new PostgresCompilationContext();
+
+            const predicate: QueryPredicate = {
+                kind: 'logical',
+                operator: 'or',
+                predicates: [
+                    {
+                        kind: 'between',
+                        expression: {
+                            kind: 'column',
+                            alias: 'u',
+                            property: 'age'
+                        },
+                        lower: {
+                            kind: 'literal',
+                            value: 18
+                        },
+                        upper: {
+                            kind: 'literal',
+                            value: 30
+                        },
+                        negated: false
+                    },
+                    {
+                        kind: 'comparison',
+                        operator: 'gt',
+                        left: {
+                            kind: 'column',
+                            alias: 'u',
+                            property: 'age'
+                        },
+                        right: {
+                            kind: 'literal',
+                            value: 65
+                        }
+                    }
+                ]
+            };
+
+            const sql = compiler.compile(
+                predicate,
+                resolved,
+                context
+            );
+
+            expect(sql).toBe(
+                '("u"."age" BETWEEN $1 AND $2 OR "u"."age" > $3)'
+            );
+
+            expect(context.getParameters()).toEqual([
+                18, 30, 65
+            ]);
+        });
+
+        it('preserves AND and OR nesting with BETWEEN', () => {
+            const context = new PostgresCompilationContext();
+
+            const predicate: QueryPredicate = {
+                kind: 'logical',
+                operator: 'and',
+                predicates: [
+                    {
+                        kind: 'logical',
+                        operator: 'or',
+                        predicates: [
+                            {
+                                kind: 'between',
+                                expression: {
+                                    kind: 'column',
+                                    alias: 'u',
+                                    property: 'age'
+                                },
+                                lower: {
+                                    kind: 'literal',
+                                    value: 18
+                                },
+                                upper: {
+                                    kind: 'literal',
+                                    value: 30
+                                },
+                                negated: false
+                            },
+                            {
+                                kind: 'comparison',
+                                operator: 'gt',
+                                left: {
+                                    kind: 'column',
+                                    alias: 'u',
+                                    property: 'age'
+                                },
+                                right: {
+                                    kind: 'literal',
+                                    value: 65
+                                }
+                            }
+                        ]
+                    },
+                    {
+                        kind: 'is-null',
+                        expression: {
+                            kind: 'column',
+                            alias: 'u',
+                            property: 'firstName'
+                        },
+                        negated: true
+                    }
+                ]
+            };
+
+            const sql = compiler.compile(
+                predicate,
+                resolved,
+                context
+            );
+
+            expect(sql).toBe(
+                '(("u"."age" BETWEEN $1 AND $2 OR "u"."age" > $3) AND "u"."first_name" IS NOT NULL)'
+            );
+
+            expect(context.getParameters()).toEqual([
+                18, 30, 65
+            ]);
+        });
+
+        it('compiles NOT over a logical group containing BETWEEN', () => {
+            const context = new PostgresCompilationContext();
+
+            const predicate: QueryPredicate = {
+                kind: 'not',
+                predicate: {
+                    kind: 'logical',
+                    operator: 'or',
+                    predicates: [
+                        {
+                            kind: 'between',
+                            expression: {
+                                kind: 'column',
+                                alias: 'u',
+                                property: 'age'
+                            },
+                            lower: {
+                                kind: 'literal',
+                                value: 18
+                            },
+                            upper: {
+                                kind: 'literal',
+                                value: 30
+                            },
+                            negated: false
+                        },
+                        {
+                            kind: 'is-null',
+                            expression: {
+                                kind: 'column',
+                                alias: 'u',
+                                property: 'firstName'
+                            },
+                            negated: false
+                        }
+                    ]
+                }
+            };
+
+            const sql = compiler.compile(
+                predicate,
+                resolved,
+                context
+            );
+
+            expect(sql).toBe(
+                'NOT (("u"."age" BETWEEN $1 AND $2 OR "u"."first_name" IS NULL))'
+            );
+
+            expect(context.getParameters()).toEqual([
+                18, 30
+            ]);
+        });
+
+        it('preserves named and literal parameter order in nested predicates', () => {
+            const context = new PostgresCompilationContext({
+                minimum: 21,
+                maximum: 60,
+                name: 'Luis'
+            });
+
+            const predicate: QueryPredicate = {
+                kind: 'logical',
+                operator: 'and',
+                predicates: [
+                    {
+                        kind: 'between',
+                        expression: {
+                            kind: 'column',
+                            alias: 'u',
+                            property: 'age'
+                        },
+                        lower: {
+                            kind: 'parameter',
+                            name: 'minimum'
+                        },
+                        upper: {
+                            kind: 'parameter',
+                            name: 'maximum'
+                        },
+                        negated: false
+                    },
+                    {
+                        kind: 'logical',
+                        operator: 'or',
+                        predicates: [
+                            {
+                                kind: 'comparison',
+                                operator: 'eq',
+                                left: {
+                                    kind: 'column',
+                                    alias: 'u',
+                                    property: 'firstName'
+                                },
+                                right: {
+                                    kind: 'parameter',
+                                    name: 'name'
+                                }
+                            },
+                            {
+                                kind: 'comparison',
+                                operator: 'lt',
+                                left: {
+                                    kind: 'column',
+                                    alias: 'u',
+                                    property: 'age'
+                                },
+                                right: {
+                                    kind: 'literal',
+                                    value: 18
+                                }
+                            }
+                        ]
+                    }
+                ]
+            };
+
+            const sql = compiler.compile(
+                predicate,
+                resolved,
+                context
+            );
+
+            expect(sql).toBe(
+                '("u"."age" BETWEEN $1 AND $2 AND ("u"."first_name" = $3 OR "u"."age" < $4))'
+            );
+
+            expect(context.getParameters()).toEqual([
+                21,
+                60,
+                'Luis',
+                18
+            ]);
+        });
+    });
+
+
 });
