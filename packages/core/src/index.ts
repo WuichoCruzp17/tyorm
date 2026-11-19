@@ -29,10 +29,7 @@ export function helloTyORM(): string {
     return 'TyORM is ready!';
 }
 
-export {
-    MetadataRegistry,
-    MetadataError
-} from './metadata';
+export * from './metadata';
 
 export {
     Column,
@@ -58,3 +55,6 @@ export type {
 export * from './query';
 
 export { ensureSymbolMetadata } from './runtime';
+
+
+export  *  from './query/compiler';

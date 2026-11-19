@@ -3,3 +3,7 @@ export { TransactionOutcomeUnknownError } from './errors/transaction-outcome-unk
 export {
     PostgresSqlDialect
 } from './query/compiler';
+
+export {
+    PostgresSelectCompiler
+} from './query/compiler';

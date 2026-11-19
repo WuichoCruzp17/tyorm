@@ -1,7 +1,6 @@
 import {
     ensureSymbolMetadata
 } from '../../src/runtime';
-
 const metadataSymbol = ensureSymbolMetadata();
 
 if (Symbol.metadata !== metadataSymbol) {

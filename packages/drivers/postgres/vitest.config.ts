@@ -1,9 +1,20 @@
+
 import { defineConfig } from 'vitest/config';
 import { loadEnv } from 'vite';
 
-export default defineConfig(({ mode }) => ({
-  test: {
-    environment: 'node',
-    env: loadEnv(mode, process.cwd(), '')
-  }
-}));
+export default defineConfig(({ mode }) => {
+    const env = loadEnv(
+        mode,
+        process.cwd(),
+        ''
+    );
+
+    return {
+        test: {
+            setupFiles: [
+                './tests/setup/symbol-metadata.ts'
+            ],
+            env
+        }
+    };
+});
