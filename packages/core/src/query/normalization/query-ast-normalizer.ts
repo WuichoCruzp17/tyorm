@@ -162,6 +162,13 @@ export class QueryAstNormalizer {
                     where: clonePredicate(query.where)
                 }),
 
+            ...(query.groupBy === undefined
+                ? {}
+                : {
+                    groupBy: Object.freeze(query.groupBy.map(expression =>
+                        Object.freeze({ ...expression })
+                    ))
+                }),
             orderBy: Object.freeze(
                 query.orderBy.map(order =>
                     Object.freeze({

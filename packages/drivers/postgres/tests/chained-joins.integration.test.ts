@@ -187,6 +187,23 @@ describe('PostgreSQL chained JOINs', () => {
 
                 const result = await connection.execute(compiled);
                 expect(result.rows).toEqual([{ user_id: 10, role_id: 200 }]);
+                const userId = column('u', 'id');
+                const roleEnabled = column('r', 'enabled');
+                const grouped = resolver.resolve({
+                    ...query,
+                    selections: [{ expression: userId }],
+                    groupBy: [userId, roleEnabled],
+                    orderBy: [{ expression: userId, direction: 'asc' }],
+                    limit: 2,
+                    offset: 0
+                });
+                const groups = await connection.execute(compiler.compile(grouped, {
+                    region: 'north',
+                    enabled: true,
+                    tenant: 1
+                }));
+                expect(groups.rows).toEqual([{ user_id: 10 }]);
+
                 await connection.rollback();
             } finally {
                 await connection.release();

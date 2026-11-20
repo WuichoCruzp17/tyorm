@@ -207,13 +207,19 @@ La consulta de integración enlaza `Department.users` (relación inversa directa
 
 Validación del 20 de noviembre de 2026. Pasaron ambos typecheck, 258 pruebas de Core y 110 pruebas de PostgreSQL, incluidas las tres de `chained-joins.integration.test.ts`. Las otras tres suites de integración de PostgreSQL quedaron fuera de esta ejecución.
 
+### 7.4 Fase 5.2.2.7 — GROUP BY en PostgreSQL
+
+`SelectQuery.groupBy` es opcional y acepta referencias a columnas de la raíz o de alias de JOIN. Core valida los nodos y los alias, copia y congela la lista, y resuelve las propiedades a columnas físicas. PostgreSQL emite la cláusula después de WHERE y antes de ORDER BY. Una lista vacía omite la cláusula. HAVING y las funciones agregadas quedan pendientes.
+
+Validación del 20 de noviembre de 2026. Pasaron ambos typecheck, la comprobación estricta de los archivos de prueba modificados, 262 pruebas de Core y 113 de PostgreSQL. La integración con tablas temporales comprobó que varias filas de una relación ManyToMany se agrupan en una. Las otras tres suites de integración de PostgreSQL quedaron fuera de esta ejecución.
+
 ## 8. Hoja de ruta siguiente
 
 1. **5.2.2.6.1:** completada y validada según la sección 7.
 2. **5.2.2.6.2:** completada y validada según la sección 7.1.
 3. **5.2.2.6.3:** completada y validada según la sección 7.2.
 4. **5.2.2.6.4:** completada y validada según la sección 7.3.
-5. Proseguir las capacidades SQL restantes según el diseño real del proyecto (no asumir una lista cerrada sin revisar el roadmap del repo).
+5. **5.2.2.7:** GROUP BY completado y validado según la sección 7.4. Quedan pendientes HAVING y las funciones agregadas.
 6. DTO explícitos, proyecciones automáticas y API de consultas tipo records; diseñar pruebas de tipado y mapeo.
 7. Compatibilidad de decoradores legacy después de estabilizar la API moderna.
 8. Ampliación multibase de datos mediante dialectos/drivers independientes; priorizar interfaces estables.

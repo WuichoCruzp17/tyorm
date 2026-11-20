@@ -413,6 +413,19 @@ export class QueryAstValidator {
                 checkPredicate(node.where);
             }
 
+            if (node.groupBy !== undefined) {
+                if (!Array.isArray(node.groupBy)) {
+                    throw new QueryAstError('GROUP BY must be an array.');
+                }
+
+                for (const expression of node.groupBy) {
+                    if (record(expression).kind !== 'column') {
+                        throw new QueryAstError('GROUP BY requires column expressions.');
+                    }
+                    checkExpression(expression);
+                }
+            }
+
             if (!Array.isArray(node.orderBy)) {
                 throw new QueryAstError(
                     'ORDER BY must be an array.'

@@ -277,6 +277,32 @@ describe('Query AST normalization', () => {
     });
 });
 
+describe('GROUP BY', () => {
+    const validator = new QueryAstValidator();
+    const normalizer = new QueryAstNormalizer();
+
+    it.each([
+        [{}, 'GROUP BY must be an array.'],
+        [[param('key')], 'GROUP BY requires column expressions.'],
+        [[column('missing', 'id')], 'Unknown column alias: missing.']
+    ])('rejects invalid grouping %j', (groupBy, message) => {
+        expect(() => validator.validate({ ...createQuery(), groupBy }))
+            .toThrow(message);
+    });
+
+    it('copies and freezes grouping columns', () => {
+        const expression = column('u', 'id');
+        const groupBy = [expression];
+        const normalized = normalizer.normalize({ ...createQuery(), groupBy });
+        groupBy.pop();
+
+        expect(normalized.groupBy).toEqual([expression]);
+        expect(Object.isFrozen(normalized.groupBy)).toBe(true);
+        expect(normalized.groupBy?.[0]).not.toBe(expression);
+        expect(Object.isFrozen(normalized.groupBy?.[0])).toBe(true);
+    });
+});
+
 describe('QueryAstValidator - ORDER BY', () => {
 
     class User { }

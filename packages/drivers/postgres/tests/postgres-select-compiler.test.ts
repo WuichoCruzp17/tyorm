@@ -603,6 +603,50 @@ describe('PostgresSelectCompiler', () => {
     });
 
 
+    it('compiles grouping after WHERE and before ordering and pagination', () => {
+        const { User, resolver, compiler } = createFixture();
+        const firstName = column('u', 'firstName');
+        const age = column('u', 'age');
+        const resolved = resolver.resolve({
+            ...createSelect(User, [{ expression: firstName }]),
+            where: {
+                kind: 'comparison',
+                operator: 'gte',
+                left: age,
+                right: { kind: 'parameter', name: 'minimumAge' }
+            },
+            groupBy: [firstName, age],
+            orderBy: [{ expression: firstName, direction: 'asc' }],
+            limit: 5
+        });
+
+        expect(compiler.compile(resolved, { minimumAge: 18 })).toEqual({
+            sql: 'SELECT "u"."first_name" FROM "users" AS "u" ' +
+                'WHERE "u"."age" >= $1 GROUP BY "u"."first_name", "u"."age" ' +
+                'ORDER BY "u"."first_name" ASC LIMIT $2',
+            parameters: [18, 5]
+        });
+    });
+
+    it('omits the clause for empty grouping', () => {
+        const { User, resolver, compiler } = createFixture();
+        const resolved = resolver.resolve({
+            ...createSelect(User, [{ expression: column('u', 'id') }]),
+            groupBy: []
+        });
+
+        expect(compiler.compile(resolved).sql)
+            .toBe('SELECT "u"."user_id" FROM "users" AS "u"');
+    });
+
+    it('resolves properties used only for grouping', () => {
+        const { User, resolver } = createFixture();
+        expect(() => resolver.resolve({
+            ...createSelect(User, [{ expression: column('u', 'id') }]),
+            groupBy: [column('u', 'unknown')]
+        })).toThrow('Unknown property "unknown"');
+    });
+
     it('compiles ORDER BY ASC', () => {
         const { User, resolver, compiler } =
             createFixture();

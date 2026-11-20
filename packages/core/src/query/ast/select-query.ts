@@ -1,5 +1,6 @@
 
 import type {
+    ColumnExpression,
     QueryExpression
 } from './expression';
 
@@ -43,6 +44,7 @@ export interface SelectQuery {
     readonly selections: readonly SelectItem[];
     readonly joins: readonly QueryJoin[];
     readonly where?: QueryPredicate;
+    readonly groupBy?: readonly ColumnExpression[];
     readonly orderBy: readonly OrderByItem[];
     readonly limit?: number;
     readonly offset?: number;

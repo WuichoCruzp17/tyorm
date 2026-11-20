@@ -333,7 +333,10 @@ export class QuerySemanticResolver {
             resolvePredicate(query.where);
         }
 
-        // 8. ORDER BY.
+        // 8. GROUP BY.
+        query.groupBy?.forEach(resolveExpression);
+
+        // 9. ORDER BY.
         query.orderBy.forEach(order =>
             resolveExpression(order.expression)
         );
