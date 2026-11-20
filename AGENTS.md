@@ -40,6 +40,34 @@ TyORM es un ORM en TypeScript inspirado en JPA (Java), diseñado para ser multib
 12. **Comunicación en español**, con código TypeScript claro, explicación de decisiones y comandos reproducibles.
 13. **Pruebas unitarias por archivo nuevo de implementación.** Añadir un archivo de pruebas unitarias correspondiente a cada archivo de implementación nuevo.
 
+### 3.1 Buenas prácticas de TypeScript
+
+Aplica estos principios como criterios de decisión, no como reglas para añadir capas o abstracciones innecesarias:
+
+- **KISS (Keep It Simple, Stupid):** elige la solución más directa que cumpla el contrato. Prefiere flujo de control claro y funciones pequeñas con una responsabilidad entendible. No introduzcas patrones, genéricos o niveles de indirección sin una necesidad comprobable.
+- **DRY (Don't Repeat Yourself):** comparte lógica cuando varias partes expresen la misma regla de negocio o puedan divergir al cambiar. No unifiques código que solo se parece superficialmente; una pequeña duplicación local es mejor que una abstracción confusa.
+- **YAGNI (You Aren't Gonna Need It):** implementa únicamente los requisitos actuales. Evita opciones, extensiones, compatibilidad futura, configurabilidad y APIs públicas especulativas.
+- **Separación de responsabilidades (SoC):** mantén cada módulo enfocado y deja las reglas en la capa que posee el contexto. En TyORM, Core resuelve semántica y metadatos; los drivers manejan conexiones y particularidades del motor. Usa interfaces en los límites entre componentes, no para cada clase concreta.
+- **SOLID:**
+  - **S — Responsabilidad única:** cada módulo debe tener un propósito coherente y cambios por una razón principal.
+  - **O — Abierto/cerrado:** extiende mediante contratos existentes cuando haya un caso real; no diseñes puntos de extensión hipotéticos.
+  - **L — Sustitución de Liskov:** las implementaciones deben respetar las precondiciones, resultados y errores del contrato que sustituyen.
+  - **I — Segregación de interfaces:** evita contratos que obliguen a implementar operaciones que el consumidor no necesita.
+  - **D — Inversión de dependencias:** las capas de alto nivel dependen de contratos estables en sus límites, no de detalles de un driver concreto.
+- **Clean Code:** usa nombres que expresen intención, mantén funciones y tipos legibles, evita efectos secundarios ocultos y elimina código muerto introducido por el cambio. Comentarios solo cuando aclaren una decisión o restricción que el código no haga evidente.
+
+#### Reglas de TypeScript
+
+- Deja que el compilador ayude: conserva `strict` y los chequeos existentes; modela estados y variantes con uniones discriminadas y tipos explícitos en los límites públicos.
+- No uses `any` para silenciar errores. Si el dato es externo o no está validado, represéntalo como `unknown` y compruébalo antes de usarlo. No afirmes tipos con casts si una validación o un tipo correcto resuelve el problema.
+- Maneja explícitamente `null`, `undefined`, errores y resultados vacíos de acuerdo con el contrato; no los sustituyas por valores por defecto que oculten fallos.
+- Prefiere `readonly` para datos que no deban mutar y evita mutaciones compartidas no necesarias. No congeles o clones datos por rutina si el contrato no lo requiere.
+- Mantén las APIs públicas pequeñas y coherentes con las exportaciones actuales. Usa los tipos de dominio existentes antes de crear tipos paralelos o conversiones duplicadas.
+- Evita funciones de muchas responsabilidades, booleanos cuyo significado no sea claro, números o strings mágicos y dependencias cíclicas. Extrae una constante o helper cuando haga más clara una regla real.
+- No añadas comentarios que repitan el código, ni reformatees o renombres código ajeno al cambio.
+
+Antes de terminar, comprueba: ¿la solución es la mínima que satisface el requisito?, ¿cada abstracción elimina una duplicación o acoplamiento real?, ¿los tipos expresan los estados válidos?, ¿los errores siguen siendo visibles?, ¿las pruebas verifican el comportamiento y no detalles internos?
+
 ## 4. Arquitectura conocida
 
 ### 4.1 Core y metadatos
