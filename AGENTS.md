@@ -12,7 +12,7 @@ TyORM es un ORM en TypeScript inspirado en JPA (Java), diseñado para ser multib
 - API de decoradores modernos TC39 Stage 3 primero; compatibilidad con decoradores legacy en una fase posterior.
 - API de consultas y decoradores, ambas.
 - Relaciones `ManyToOne`, `OneToMany`, `OneToOne`, `ManyToMany`.
-- DTO explícitos y proyecciones automáticas disponibles. La API de consultas tipo records queda pendiente.
+- DTO explícitos y proyecciones automáticas disponibles. La API de consultas tipo records permite reutilizar esquemas de proyección.
 - Cambios incrementales, con pruebas y typecheck por cada fase.
 
 ## 2. Entorno y organización
@@ -38,6 +38,7 @@ TyORM es un ORM en TypeScript inspirado en JPA (Java), diseñado para ser multib
 10. **No ejecutar operaciones destructivas** (borrar tablas, migraciones irreversibles, reset de BD, eliminar archivos) sin autorización explícita.
 11. **Evitar cambios ajenos a la tarea.** No reescribir todo el compilador, los decoradores o los resolvers si basta un cambio local.
 12. **Comunicación en español**, con código TypeScript claro, explicación de decisiones y comandos reproducibles.
+13. **Pruebas unitarias por archivo nuevo de implementación.** Añadir un archivo de pruebas unitarias correspondiente a cada archivo de implementación nuevo.
 
 ## 4. Arquitectura conocida
 
@@ -237,6 +238,12 @@ Validación del 20 de noviembre de 2026. Pasaron ambos typecheck, la comprobaci�
 
 Validación del 20 de noviembre de 2026. Pasaron ambos typecheck, la comprobación estricta de las pruebas modificadas, 282 pruebas de Core y 117 de PostgreSQL. La integración verificó una proyección automática con una columna y un agregado. Las otras tres suites de integración de PostgreSQL quedaron fuera de esta ejecución.
 
+### 7.9 Consultas estilo record
+
+`defineRecord` declara un esquema reutilizable de campos con una función de validación o conversión por campo. `executeRecordQuery` vincula cada campo a una expresión para la consulta concreta y reutiliza la ejecución de proyecciones. El resultado es un objeto congelado por fila, con los tipos inferidos de las funciones del esquema. La consulta rechaza selecciones adicionales o ausentes antes de compilar.
+
+Validación del 20 de noviembre de 2026. Pasaron ambos typecheck, la comprobación estricta de las pruebas modificadas, 285 pruebas de Core y 117 de PostgreSQL. La integración comprobó la conversión de COUNT a bigint y las pruebas unitarias reutilizaron un esquema con dos selecciones diferentes. Las otras tres suites de integración de PostgreSQL quedaron fuera de esta ejecución.
+
 ## 8. Hoja de ruta siguiente
 
 1. **5.2.2.6.1:** completada y validada según la sección 7.
@@ -244,7 +251,7 @@ Validación del 20 de noviembre de 2026. Pasaron ambos typecheck, la comprobaci�
 3. **5.2.2.6.3:** completada y validada según la sección 7.2.
 4. **5.2.2.6.4:** completada y validada según la sección 7.3.
 5. **5.2.2.7:** GROUP BY completado y validado según la sección 7.4. HAVING quedó completado en la **fase 5.2.2.8** según la sección 7.5. Las funciones agregadas quedaron completadas en la **fase 5.2.2.9** según la sección 7.6.
-6. DTO explícitos completados y validados según la sección 7.7. Proyecciones automáticas validadas según la sección 7.8. Sigue la API de consultas tipo records.
+6. DTO explícitos completados y validados según la sección 7.7. Proyecciones automáticas validadas según la sección 7.8. API de consultas tipo records validada según la sección 7.9.
 7. Compatibilidad de decoradores legacy después de estabilizar la API moderna.
 8. Ampliación multibase de datos mediante dialectos/drivers independientes; priorizar interfaces estables.
 9. Mantener/regresar a pruebas de integración PostgreSQL, especialmente comportamiento tras errores SQL y consultas pendientes en una transacción.

@@ -6,3 +6,4 @@ export * from './normalization';
 export * from './semantic';
 export * from './compiler';
 export * from './execute-dto-query';
+export * from './execute-record-query';

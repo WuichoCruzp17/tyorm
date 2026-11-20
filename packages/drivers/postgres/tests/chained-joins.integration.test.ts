@@ -9,6 +9,8 @@ import {
     Entity,
     executeDtoQuery,
     executeProjectionQuery,
+    defineRecord,
+    executeRecordQuery,
     getEntityMetadata,
     JoinColumn,
     JoinTable,
@@ -284,6 +286,31 @@ describe('PostgreSQL chained JOINs', () => {
                     { ...groupingParameters, minimumRoles: 3 }
                 );
                 expect(projected).toEqual([{ memberId: 10, roleCount: '3' }]);
+
+                const summaryRecord = defineRecord({
+                    memberId: value => {
+                        if (typeof value !== 'number') {
+                            throw new TypeError('Expected a numeric member ID.');
+                        }
+                        return value;
+                    },
+                    roleCount: value => {
+                        if (typeof value !== 'string') {
+                            throw new TypeError('Expected a PostgreSQL COUNT string.');
+                        }
+                        return BigInt(value);
+                    }
+                });
+                const records = await executeRecordQuery(
+                    connection,
+                    resolver,
+                    compiler,
+                    totals.query,
+                    summaryRecord,
+                    { memberId: userId, roleCount },
+                    { ...groupingParameters, minimumRoles: 3 }
+                );
+                expect(records).toEqual([{ memberId: 10, roleCount: 3n }]);
 
                 await connection.rollback();
             } finally {
