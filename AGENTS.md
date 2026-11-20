@@ -201,12 +201,18 @@ El compilador usa el plan de Core para emitir dos cláusulas del mismo tipo (`IN
 
 Validación del 20 de noviembre de 2026. Pasaron ambos typecheck, 258 pruebas de Core y 107 de PostgreSQL sin base de datos, incluidas las 29 del compilador SELECT. Las pruebas nuevas cubren el lado propietario con `INNER JOIN`, el lado inverso con `LEFT JOIN`, clave compuesta, esquema, colisión de alias y orden de parámetros de `ON` y `WHERE`. Las suites de integración con PostgreSQL quedaron fuera de esta ejecución.
 
+### 7.3 Fase 5.2.2.6.4 — Integración de JOIN encadenados
+
+La consulta de integración enlaza `Department.users` (relación inversa directa) y `User.roles` (ManyToMany) en PostgreSQL. Usa tablas temporales en una transacción y comprueba los filtros `ON`, el filtro `WHERE`, el orden de parámetros, `ORDER BY`, LIMIT/OFFSET, la colisión con un alias interno y la unión por clave compuesta. La suite también verifica el rechazo de un alias desconocido y de un parámetro ausente.
+
+Validación del 20 de noviembre de 2026. Pasaron ambos typecheck, 258 pruebas de Core y 110 pruebas de PostgreSQL, incluidas las tres de `chained-joins.integration.test.ts`. Las otras tres suites de integración de PostgreSQL quedaron fuera de esta ejecución.
+
 ## 8. Hoja de ruta siguiente
 
 1. **5.2.2.6.1:** completada y validada según la sección 7.
 2. **5.2.2.6.2:** completada y validada según la sección 7.1.
 3. **5.2.2.6.3:** completada y validada según la sección 7.2.
-4. **5.2.2.6.4:** integración: múltiples JOIN encadenados, condiciones `join.on`, alias, WHERE, ORDER BY, paginación, parámetros, errores y claves compuestas.
+4. **5.2.2.6.4:** completada y validada según la sección 7.3.
 5. Proseguir las capacidades SQL restantes según el diseño real del proyecto (no asumir una lista cerrada sin revisar el roadmap del repo).
 6. DTO explícitos, proyecciones automáticas y API de consultas tipo records; diseñar pruebas de tipado y mapeo.
 7. Compatibilidad de decoradores legacy después de estabilizar la API moderna.
