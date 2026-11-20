@@ -99,6 +99,16 @@ describe('DataSource', () => {
         await source.close();
     });
 
+    it('rejects repositories for entities outside the data source model', async () => {
+        class Unregistered {}
+        const { options, driver } = fixture();
+        const source = await DataSource.connect(options);
+
+        expect(() => source.getRepository(Unregistered)).toThrow('is not registered');
+        expect(driver.acquireConnection).not.toHaveBeenCalled();
+        await source.close();
+    });
+
     it('closes once and rejects execution after closing begins', async () => {
         const { options, driver } = fixture();
         const source = await DataSource.connect(options);

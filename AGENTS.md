@@ -287,7 +287,7 @@ Validación del 20 de noviembre de 2026. Pasaron ambos typecheck, el typecheck d
 5. **5.2.2.7:** GROUP BY completado y validado según la sección 7.4. HAVING quedó completado en la **fase 5.2.2.8** según la sección 7.5. Las funciones agregadas quedaron completadas en la **fase 5.2.2.9** según la sección 7.6.
 6. DTO explícitos completados y validados según la sección 7.7. Proyecciones automáticas validadas según la sección 7.8. API de consultas tipo records validada según la sección 7.9.
 7. Compatibilidad de decoradores legacy completada y validada según la sección 7.10.
-8. **Siguiente fase:** DataSource, selección de driver y repositorios de lectura. Ver sección 8.1.
+8. **Fase 8.1:** arranque y repositorios de lectura completados. Sigue la entrega C de repositorios transaccionales.
 9. Ampliar a un segundo motor tras estabilizar el contrato del proveedor.
 10. Mantener/regresar a pruebas de integración PostgreSQL, especialmente comportamiento tras errores SQL y consultas pendientes en una transacción.
 
@@ -320,8 +320,23 @@ Validación del 20 de noviembre de 2026. Pasaron ambos typecheck, el typecheck d
 
 `DataSource.connect` registra las entidades y selecciona el cargador del mapa explícito `providers` por `type`. Para PostgreSQL, la configuración puede declarar `postgres: async () => (await import('@tyorm/postgres')).postgresProvider()`. El proveedor crea el driver y su compilador. `DataSource.execute` resuelve y ejecuta un SELECT y libera la conexión. `close` comparte un único cierre del pool y rechaza nuevas ejecuciones desde que comienza.
 
-Validación del 20 de noviembre de 2026. Pasaron el build, ambos typecheck, el chequeo de tipos de pruebas de Core, 296 pruebas de Core y 118 de PostgreSQL. Las otras tres suites de integración de PostgreSQL quedaron fuera de esta ejecución. Una aplicación temporal externa al workspace instaló ambos tarballs con npm y ejecutó un SELECT parametrizado en PostgreSQL. El tarball del driver se limitó a los artefactos compilados y al manifiesto. La entrega B queda pendiente.
+Validación del 20 de noviembre de 2026. Pasaron el build, ambos typecheck, el chequeo de tipos de pruebas de Core, 296 pruebas de Core y 118 de PostgreSQL. Las otras tres suites de integración de PostgreSQL quedaron fuera de esta ejecución. Una aplicación temporal externa al workspace instaló ambos tarballs con npm y ejecutó un SELECT parametrizado en PostgreSQL. El tarball del driver se limitó a los artefactos compilados y al manifiesto.
 
+
+#### Entrega B completada — Repositorios de lectura
+
+`DataSource.getRepository(Entity)` usa el modelo registrado y el pipeline SELECT existente. `findById` devuelve la entidad o `null`; `existsById` consulta solo la existencia. Las claves simples se pasan como valor y las compuestas como objeto con todas sus propiedades. `findAll` devuelve una lista, acepta orden y paginación y agrega componentes faltantes de la clave primaria como desempate ascendente. `count` devuelve `bigint` para conservar la precisión.
+
+Las consultas hidratan columnas escalares con nombres lógicos de tipo string. El repositorio usa el prototipo de la entidad y conserva valores del driver, incluidos los nulos. La hidratación omite constructores, inicializadores y relaciones. Cada ejecución usa y libera una conexión a través de `DataSource`; el alcance transaccional corresponde a la entrega C.
+
+Validación del 20 de noviembre de 2026. Pasaron el build, ambos typecheck, el chequeo de tipos de las pruebas y 303 pruebas de Core y 119 de PostgreSQL. La integración consultó el catálogo con claves simples y compuestas, paginación, existencia y conteo. Las otras tres suites de integración de PostgreSQL quedaron fuera de esta ejecución.
+
+
+#### Ampliación de la entrega B — Repositorios personalizados
+
+`RepositoryDecorator`, importable como `Repository`, asocia una subclase de `ReadRepository<Entity, Id>` con una entidad registrada. `DataSource.getRepository` devuelve la subclase y conserva el acceso directo por entidad. La exportación existente `Repository` sigue siendo la clase base. Los métodos personalizados pueden usar `this.column` y `findAll({ where })` para conservar la resolución de metadatos, el enlace de parámetros y la hidratación.
+
+Validación del 20 de noviembre de 2026. Pasaron el build, ambos typecheck, el chequeo estricto de las pruebas modificadas, 306 pruebas de Core y 119 de PostgreSQL. La integración ejecutó un método propio y uno heredado. Las otras tres suites de integración de PostgreSQL quedaron fuera de esta ejecución.
 
 ## 9. Comandos de validación
 

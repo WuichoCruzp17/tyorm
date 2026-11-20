@@ -254,6 +254,25 @@ async function readDepartmentTotals(connectedDriver: PostgreSQLDriver) {
 }
 ```
 
+### Declare a custom repository
+
+Use a decorated subclass to add methods alongside `findById`, `findAll`, `existsById`, and `count`. Register `Employee` in the DataSource configuration. The second type parameter specifies the ID type.
+
+```ts
+import { ReadRepository, RepositoryDecorator as Repository, eq, literal } from '@tyorm/core';
+
+@Repository(Employee)
+class EmployeeRepository extends ReadRepository<Employee, number> {
+    findByName(name: string): Promise<Employee[]> {
+        return this.findAll({ where: eq(this.column('name'), literal(name)) });
+    }
+}
+
+// With a connected DataSource named db
+const employees = db.getRepository(EmployeeRepository);
+const matches = await employees.findByName('Ada');
+```
+
 ## Driver extension points
 
 - `DatabaseDriver` manages the pool lifecycle and acquires connection leases.

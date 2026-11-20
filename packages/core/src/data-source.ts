@@ -1,3 +1,5 @@
+import { Repository } from './repository';
+import { createDecoratedRepository } from './repository-decorator';
 import type { DatabaseDriver, DriverConfig, QueryResult } from './drivers';
 import { getEntityMetadata } from './decorators';
 import { OrmMetadataModel, type EntityTarget } from './metadata';
@@ -18,7 +20,8 @@ export class DataSource {
     private constructor(
         private readonly driver: DatabaseDriver,
         private readonly compiler: SqlCompiler,
-        private readonly resolver: QuerySemanticResolver
+        private readonly resolver: QuerySemanticResolver,
+        private readonly model: OrmMetadataModel
     ) {}
 
     static async connect(options: DataSourceOptions): Promise<DataSource> {
@@ -49,7 +52,21 @@ export class DataSource {
             throw error;
         }
 
-        return new DataSource(driver, compiler, resolver);
+        return new DataSource(driver, compiler, resolver, model);
+    }
+
+    getRepository<Instance extends Repository<object>>(target: EntityTarget<Instance>): Instance;
+    getRepository<Entity extends object>(target: EntityTarget<Entity>): Repository<Entity>;
+    getRepository(target: EntityTarget): object {
+        const execute = (query: SelectQuery) => this.execute(query);
+        const custom = createDecoratedRepository(target, this.model, execute);
+        if (custom !== undefined) {
+            return custom;
+        }
+        if (target.prototype instanceof Repository) {
+            throw new Error(`Repository "${target.name}" must declare @Repository.`);
+        }
+        return new Repository(this.model.getEntity(target).entity, execute);
     }
 
     async execute(

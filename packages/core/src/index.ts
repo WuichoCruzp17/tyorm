@@ -59,3 +59,6 @@ export { ensureSymbolMetadata } from './runtime';
 
 export  *  from './query/compiler';
 export * from './data-source';
+export * from './repository';
+export { Repository as ReadRepository } from './repository';
+export { RepositoryDecorator } from './repository-decorator';
