@@ -225,6 +225,12 @@ Core expone `count()`, `count(columna)`, `sum(columna)`, `avg(columna)`, `min(co
 
 Validación del 20 de noviembre de 2026. Pasaron ambos typecheck, la comprobación estricta de los archivos de prueba modificados, 272 pruebas de Core y 116 de PostgreSQL. La integración con tablas temporales comprobó COUNT y SUM sobre una relación ManyToMany y el filtrado por el conteo. Las otras tres suites de integración de PostgreSQL quedaron fuera de esta ejecución.
 
+### 7.7 Proyecciones a DTO explícitos
+
+`executeDtoQuery` recibe un ejecutor, un resolvedor, un compilador SQL, una consulta y una proyección. La proyección define un mapa de alias a expresiones y un mapper que construye el DTO. TypeScript infiere los alias y el tipo de retorno del mapper. Los valores de fila se exponen como `unknown` para que el mapper aplique las conversiones y validaciones del DTO. Un alias ausente produce un error y un valor nulo se conserva. PostgreSQL respeta los alias explícitos de columnas y agregados.
+
+Validación del 20 de noviembre de 2026. Pasaron ambos typecheck, la comprobación estricta de las pruebas modificadas, 272 pruebas de Core y 117 de PostgreSQL. La integración construyó una instancia del DTO a partir de una columna con alias y un COUNT de PostgreSQL convertido de string a bigint por el mapper. Las otras tres suites de integración de PostgreSQL quedaron fuera de esta ejecución.
+
 ## 8. Hoja de ruta siguiente
 
 1. **5.2.2.6.1:** completada y validada según la sección 7.
@@ -232,7 +238,7 @@ Validación del 20 de noviembre de 2026. Pasaron ambos typecheck, la comprobaci�
 3. **5.2.2.6.3:** completada y validada según la sección 7.2.
 4. **5.2.2.6.4:** completada y validada según la sección 7.3.
 5. **5.2.2.7:** GROUP BY completado y validado según la sección 7.4. HAVING quedó completado en la **fase 5.2.2.8** según la sección 7.5. Las funciones agregadas quedaron completadas en la **fase 5.2.2.9** según la sección 7.6.
-6. DTO explícitos, proyecciones automáticas y API de consultas tipo records; diseñar pruebas de tipado y mapeo.
+6. DTO explícitos completados y validados según la sección 7.7. Siguen las proyecciones automáticas y la API de consultas tipo records.
 7. Compatibilidad de decoradores legacy después de estabilizar la API moderna.
 8. Ampliación multibase de datos mediante dialectos/drivers independientes; priorizar interfaces estables.
 9. Mantener/regresar a pruebas de integración PostgreSQL, especialmente comportamiento tras errores SQL y consultas pendientes en una transacción.

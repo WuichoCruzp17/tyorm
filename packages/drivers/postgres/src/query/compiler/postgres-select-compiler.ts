@@ -122,7 +122,7 @@ export class PostgresSelectCompiler implements SqlCompiler {
             }
 
             const sql = this.expressions.compile(expression, resolved, context);
-            if (expression.kind === 'aggregate' && selection.alias !== undefined) {
+            if (selection.alias !== undefined) {
                 return `${sql} AS ${this.dialect.quoteIdentifier(selection.alias)}`;
             }
             return sql;

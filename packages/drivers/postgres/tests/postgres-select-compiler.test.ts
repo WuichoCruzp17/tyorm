@@ -7,6 +7,7 @@ import {
 
 import {
     Entity,
+    executeDtoQuery,
     PrimaryKey,
     Column,
     QuerySemanticResolver,
@@ -27,6 +28,7 @@ import {
 } from '@tyorm/core';
 
 import type {
+    EntityTarget,
     QueryJoin,
     QueryPredicate,
     ResolvedSelectQuery
@@ -84,7 +86,7 @@ function createFixture() {
 
 
 function createSelect(
-    entity: Function,
+    entity: EntityTarget,
     selections: Array<{
         expression: ReturnType<typeof column>;
     }>,
@@ -633,6 +635,30 @@ describe('PostgresSelectCompiler', () => {
                 'ORDER BY "u"."first_name" ASC LIMIT $2',
             parameters: [18, 5]
         });
+    });
+
+    it('passes through null DTO values and rejects missing result aliases', async () => {
+        const { User, resolver, compiler } = createFixture();
+        const query = createSelect(User, []);
+        const projection = {
+            select: { givenName: column('u', 'firstName') },
+            map: ({ givenName }: { readonly givenName: unknown }) => ({ givenName })
+        };
+
+        const result = await executeDtoQuery({
+            async execute<T>() {
+                return { rows: [{ givenName: null, extra: 1 } as T], affectedRows: 1 };
+            }
+        }, resolver, compiler, query, projection);
+        expect(result).toEqual([{ givenName: null }]);
+
+        await expect(executeDtoQuery({
+            async execute<T>() {
+                return { rows: [{ first_name: 'Ada' } as T], affectedRows: 1 };
+            }
+        }, resolver, compiler, query, projection)).rejects.toThrow(
+            'Missing DTO projection alias "givenName" in query result.'
+        );
     });
 
     it('compiles aggregate projections, predicates and ordering', () => {

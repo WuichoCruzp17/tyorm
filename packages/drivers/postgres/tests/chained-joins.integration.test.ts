@@ -7,6 +7,7 @@ import {
     sum,
     Column,
     Entity,
+    executeDtoQuery,
     getEntityMetadata,
     JoinColumn,
     JoinTable,
@@ -246,6 +247,32 @@ describe('PostgreSQL chained JOINs', () => {
                     minimumRoles: 4
                 }));
                 expect(aboveCount.rows).toEqual([]);
+
+                class UserRoleSummary {
+                    constructor(
+                        readonly userId: number,
+                        readonly totalRoles: bigint
+                    ) { }
+                }
+
+                const summaries = await executeDtoQuery(
+                    connection,
+                    resolver,
+                    compiler,
+                    totals.query,
+                    {
+                        select: { memberId: userId, roleCount },
+                        map: ({ memberId, roleCount }) => {
+                            if (typeof memberId !== 'number' || typeof roleCount !== 'string') {
+                                throw new TypeError('Unexpected role summary values.');
+                            }
+                            return new UserRoleSummary(memberId, BigInt(roleCount));
+                        }
+                    },
+                    { ...groupingParameters, minimumRoles: 3 }
+                );
+                expect(summaries).toEqual([new UserRoleSummary(10, 3n)]);
+                expect(summaries[0]).toBeInstanceOf(UserRoleSummary);
 
                 await connection.rollback();
             } finally {
