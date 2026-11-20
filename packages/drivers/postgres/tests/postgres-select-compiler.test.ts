@@ -868,44 +868,6 @@ describe('PostgresSelectCompiler', () => {
             });
         });
 
-        it('rejects a resolved plan that uses a junction table', () => {
-            @Entity({ name: 'roles' })
-            class Role {
-                @PrimaryKey({ type: 'uuid', name: 'role_id' })
-                id!: string;
-            }
-
-            @Entity({ name: 'users' })
-            class User {
-                @PrimaryKey({ type: 'uuid', name: 'user_id' })
-                id!: string;
-
-                @ManyToMany(() => Role)
-                @JoinTable()
-                roles!: Role[];
-            }
-
-            const resolver = new QuerySemanticResolver(new OrmMetadataModel([
-                getEntityMetadata(User),
-                getEntityMetadata(Role)
-            ]));
-            const resolved = resolver.resolve({
-                ...createSelect(User, [{ expression: column('u', 'id') }]),
-                joins: [
-                    {
-                        kind: 'join',
-                        type: 'inner',
-                        sourceAlias: 'u',
-                        relation: 'roles',
-                        alias: 'r'
-                    }
-                ]
-            });
-
-            expect(() => new PostgresSelectCompiler().compile(resolved))
-                .toThrow('Junction JOIN is not supported yet.');
-        });
-
         it('binds ON parameters before WHERE and pagination', () => {
             const { resolver, compiler, query } = createJoinFixture();
             const resolved = resolver.resolve({
@@ -958,6 +920,106 @@ describe('PostgresSelectCompiler', () => {
             });
         });
 
+    });
+
+
+    describe('ManyToMany JOIN compilation', () => {
+        @Entity({ name: 'roles', schema: 'auth' })
+        class Role {
+            @PrimaryKey({ type: 'uuid', name: 'role_id' })
+            id!: string;
+
+            @ManyToMany(() => User, 'roles')
+            users!: User[];
+        }
+
+        @Entity({ name: 'users' })
+        class User {
+            @PrimaryKey({ type: 'uuid', name: 'user_id' })
+            id!: string;
+
+            @PrimaryKey({ type: 'integer', name: 'tenant_id' })
+            tenantId!: number;
+
+            @ManyToMany(() => Role, 'users')
+            @JoinTable({
+                name: 'user roles',
+                schema: 'access',
+                joinColumns: [
+                    { name: 'member_fk', referencedColumnName: 'user_id' },
+                    { name: 'tenant_fk', referencedColumnName: 'tenant_id' }
+                ],
+                inverseJoinColumns: [
+                    { name: 'permission_fk', referencedColumnName: 'role_id' }
+                ]
+            })
+            roles!: Role[];
+        }
+
+        const resolver = new QuerySemanticResolver(new OrmMetadataModel([
+            getEntityMetadata(User),
+            getEntityMetadata(Role)
+        ]));
+        const compiler = new PostgresSelectCompiler();
+
+        it('compiles an owning INNER JOIN using both sets of junction columns', () => {
+            const resolved = resolver.resolve({
+                ...createSelect(User, [{ expression: column('u', 'id') }]),
+                joins: [{
+                    kind: 'join',
+                    type: 'inner',
+                    sourceAlias: 'u',
+                    relation: 'roles',
+                    alias: '__tyorm_junction_0'
+                }]
+            });
+
+            expect(compiler.compile(resolved)).toEqual({
+                sql: 'SELECT "u"."user_id" FROM "users" AS "u" ' +
+                    'INNER JOIN "access"."user roles" AS "__tyorm_junction_1" ' +
+                    'ON "u"."user_id" = "__tyorm_junction_1"."member_fk" ' +
+                    'AND "u"."tenant_id" = "__tyorm_junction_1"."tenant_fk" ' +
+                    'INNER JOIN "auth"."roles" AS "__tyorm_junction_0" ' +
+                    'ON "__tyorm_junction_1"."permission_fk" = "__tyorm_junction_0"."role_id"',
+                parameters: []
+            });
+        });
+
+        it('compiles an inverse LEFT JOIN and binds the target filter before WHERE', () => {
+            const resolved = resolver.resolve({
+                ...createSelect(Role, [{ expression: column('member', 'id') }]),
+                joins: [{
+                    kind: 'join',
+                    type: 'left',
+                    sourceAlias: 'u',
+                    relation: 'users',
+                    alias: 'member',
+                    on: {
+                        kind: 'comparison',
+                        operator: 'eq',
+                        left: column('member', 'tenantId'),
+                        right: { kind: 'parameter', name: 'tenant' }
+                    }
+                }],
+                where: {
+                    kind: 'comparison',
+                    operator: 'eq',
+                    left: column('u', 'id'),
+                    right: { kind: 'parameter', name: 'role' }
+                }
+            });
+
+            expect(compiler.compile(resolved, { tenant: 7, role: 'role-1' })).toEqual({
+                sql: 'SELECT "member"."user_id" FROM "auth"."roles" AS "u" ' +
+                    'LEFT JOIN "access"."user roles" AS "__tyorm_junction_0" ' +
+                    'ON "u"."role_id" = "__tyorm_junction_0"."permission_fk" ' +
+                    'LEFT JOIN "users" AS "member" ' +
+                    'ON "__tyorm_junction_0"."member_fk" = "member"."user_id" ' +
+                    'AND "__tyorm_junction_0"."tenant_fk" = "member"."tenant_id" ' +
+                    'AND ("member"."tenant_id" = $1) WHERE "u"."role_id" = $2',
+                parameters: [7, 'role-1']
+            });
+        });
     });
 
 

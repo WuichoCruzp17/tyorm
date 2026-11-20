@@ -281,20 +281,6 @@ export class PostgresSelectCompiler implements SqlCompiler {
         resolved: ResolvedSelectQuery,
         context: PostgresCompilationContext
     ): string {
-        if (join.plan.kind !== 'direct') {
-            throw new Error(
-                'Junction JOIN is not supported yet.'
-            );
-        }
-
-        const conditions = join.plan.conditions;
-
-        if (conditions.length === 0) {
-            throw new Error(
-                'Direct JOIN requires at least one condition.'
-            );
-        }
-
         const joinType = join.join.type === 'inner'
             ? 'INNER JOIN'
             : join.join.type === 'left'
@@ -307,21 +293,24 @@ export class PostgresSelectCompiler implements SqlCompiler {
             );
         }
 
-        const entity = join.target.metadata.entity;
+        const { plan } = join;
+        const targetConditions = plan.kind === 'direct'
+            ? plan.conditions
+            : plan.targetConditions;
 
-        const tableName = this.dialect.quoteIdentifier(
-            entity.tableName
-        );
+        if (plan.kind === 'direct' && targetConditions.length === 0) {
+            throw new Error(
+                'Direct JOIN requires at least one condition.'
+            );
+        }
+        if (plan.kind === 'junction' &&
+            (plan.sourceConditions.length === 0 || targetConditions.length === 0)) {
+            throw new Error(
+                'Junction JOIN requires conditions for both tables.'
+            );
+        }
 
-        const schema = entity.schema
-            ? `${this.dialect.quoteIdentifier(entity.schema)}.`
-            : '';
-
-        const alias = this.dialect.quoteIdentifier(
-            join.target.alias
-        );
-
-        const conditionsSql = conditions.map(condition =>
+        const conditionsSql = targetConditions.map(condition =>
             this.compileJoinCondition(condition)
         );
 
@@ -334,12 +323,47 @@ export class PostgresSelectCompiler implements SqlCompiler {
             conditionsSql.push(`(${predicate})`);
         }
 
-        const on = conditionsSql.join(' AND ');
-
-        return (
-            `${joinType} ${schema}${tableName} ` +
-            `AS ${alias} ON ${on}`
+        const entity = join.target.metadata.entity;
+        const targetJoin = this.compileJoinClause(
+            joinType,
+            entity.tableName,
+            entity.schema,
+            join.target.alias,
+            conditionsSql
         );
+
+        if (plan.kind === 'direct') {
+            return targetJoin;
+        }
+
+        const junctionJoin = this.compileJoinClause(
+            joinType,
+            plan.table.name,
+            plan.table.schema,
+            plan.table.alias,
+            plan.sourceConditions.map(condition =>
+                this.compileJoinCondition(condition)
+            )
+        );
+
+        return `${junctionJoin} ${targetJoin}`;
+    }
+
+
+    private compileJoinClause(
+        joinType: string,
+        tableName: string,
+        schema: string | undefined,
+        alias: string,
+        conditions: readonly string[]
+    ): string {
+        const table = this.dialect.quoteIdentifier(tableName);
+        const qualifier = schema
+            ? `${this.dialect.quoteIdentifier(schema)}.`
+            : '';
+        const tableAlias = this.dialect.quoteIdentifier(alias);
+
+        return `${joinType} ${qualifier}${table} AS ${tableAlias} ON ${conditions.join(' AND ')}`;
     }
 
 

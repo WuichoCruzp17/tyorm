@@ -1,7 +1,7 @@
 # AGENTS.md — TyORM
 
 > Instrucciones para agentes de desarrollo (Codex) que trabajen en el repositorio TyORM.
-> Estado documentado: 19 de noviembre de 2026. Este archivo recoge decisiones y resultados comunicados durante el desarrollo; **el repositorio y sus pruebas son la fuente de verdad**. Verificar siempre los archivos reales antes de editar.
+> Estado documentado: 20 de noviembre de 2026. Este archivo recoge decisiones y resultados comunicados durante el desarrollo; **el repositorio y sus pruebas son la fuente de verdad**. Verificar siempre los archivos reales antes de editar.
 
 ## 1. Misión y alcance
 
@@ -179,7 +179,7 @@ export function ManyToOne<T extends object>(
 - La suite `tests/query-ast-validator.pagination.test.ts` (core) terminó con **13 pruebas correctas** después de corregir el fixture para construir el nodo AST de columna directamente (no importar un `column()` inexistente desde `../src/query/ast`).
 ## 7. Fase 5.2.2.6.1 — INNER JOIN directo completado
 
-El compilador emite los JOIN directos después de FROM a partir de `resolved.joins` y `join.plan.conditions`. Cita los identificadores con el dialecto, combina las condiciones físicas con AND y agrega `join.on` al mismo ON. El contexto compartido vincula los valores de ON antes que los de WHERE y paginación. Los planes con tabla intermedia se rechazan explícitamente.
+El compilador emite los JOIN directos después de FROM a partir de `resolved.joins` y `join.plan.conditions`. Cita los identificadores con el dialecto, combina las condiciones físicas con AND y agrega `join.on` al mismo ON. El contexto compartido vincula los valores de ON antes que los de WHERE y paginación. En esta fase todavía se rechazaban los planes con tabla intermedia.
 
 En el fixture, la propiedad `department` apunta a una entidad con PK física `department_id`. Sin configuración explícita, el resolver infiere `department_department_id` como columna local. Para obtener `department_id` en ambos lados se declara `@JoinColumn({ name: 'department_id', referencedColumnName: 'department_id' })` junto a `@ManyToOne(() => Department)` y se registran ambas entidades en `OrmMetadataModel`.
 
@@ -195,11 +195,17 @@ La prueba de integración confirma que un filtro en `ON` conserva los departamen
 
 Validación del 19 de noviembre de 2026. Ambos typecheck pasaron. Core pasó 258 pruebas. PostgreSQL pasó 106 pruebas sin base de datos, incluidas las 28 del compilador SELECT. El caso nuevo de integración pasó contra PostgreSQL. Las demás pruebas de integración quedaron fuera de la ejecución.
 
+### 7.2 Fase 5.2.2.6.3 — ManyToMany en PostgreSQL
+
+El compilador usa el plan de Core para emitir dos cláusulas del mismo tipo (`INNER JOIN` o `LEFT JOIN`). La primera une el origen con la tabla intermedia mediante `sourceConditions`. La segunda une la tabla intermedia con el destino mediante `targetConditions` y agrega `join.on` a su `ON`. El dialecto cita los identificadores, incluidos el esquema y el alias interno de la tabla intermedia.
+
+Validación del 20 de noviembre de 2026. Pasaron ambos typecheck, 258 pruebas de Core y 107 de PostgreSQL sin base de datos, incluidas las 29 del compilador SELECT. Las pruebas nuevas cubren el lado propietario con `INNER JOIN`, el lado inverso con `LEFT JOIN`, clave compuesta, esquema, colisión de alias y orden de parámetros de `ON` y `WHERE`. Las suites de integración con PostgreSQL quedaron fuera de esta ejecución.
+
 ## 8. Hoja de ruta siguiente
 
 1. **5.2.2.6.1:** completada y validada según la sección 7.
 2. **5.2.2.6.2:** completada y validada según la sección 7.1.
-3. **5.2.2.6.3:** ManyToMany: dos JOIN mediante `ResolvedJunctionJoin.table`, `sourceConditions`, `targetConditions`; manejar alias internos y esquema.
+3. **5.2.2.6.3:** completada y validada según la sección 7.2.
 4. **5.2.2.6.4:** integración: múltiples JOIN encadenados, condiciones `join.on`, alias, WHERE, ORDER BY, paginación, parámetros, errores y claves compuestas.
 5. Proseguir las capacidades SQL restantes según el diseño real del proyecto (no asumir una lista cerrada sin revisar el roadmap del repo).
 6. DTO explícitos, proyecciones automáticas y API de consultas tipo records; diseñar pruebas de tipado y mapeo.
