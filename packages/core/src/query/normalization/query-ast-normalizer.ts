@@ -169,6 +169,10 @@ export class QueryAstNormalizer {
                         Object.freeze({ ...expression })
                     ))
                 }),
+            ...(query.having === undefined
+                ? {}
+                : { having: clonePredicate(query.having) }),
+
             orderBy: Object.freeze(
                 query.orderBy.map(order =>
                     Object.freeze({

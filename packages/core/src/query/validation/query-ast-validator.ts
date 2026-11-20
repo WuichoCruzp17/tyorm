@@ -426,6 +426,14 @@ export class QueryAstValidator {
                 }
             }
 
+            if (node.having !== undefined) {
+                if (!Array.isArray(node.groupBy) || node.groupBy.length === 0) {
+                    throw new QueryAstError('HAVING requires a non-empty GROUP BY.');
+                }
+
+                checkPredicate(node.having);
+            }
+
             if (!Array.isArray(node.orderBy)) {
                 throw new QueryAstError(
                     'ORDER BY must be an array.'

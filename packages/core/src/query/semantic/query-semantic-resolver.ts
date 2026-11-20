@@ -336,7 +336,12 @@ export class QuerySemanticResolver {
         // 8. GROUP BY.
         query.groupBy?.forEach(resolveExpression);
 
-        // 9. ORDER BY.
+        // 9. HAVING.
+        if (query.having !== undefined) {
+            resolvePredicate(query.having);
+        }
+
+        // 10. ORDER BY.
         query.orderBy.forEach(order =>
             resolveExpression(order.expression)
         );

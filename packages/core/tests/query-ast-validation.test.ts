@@ -303,6 +303,42 @@ describe('GROUP BY', () => {
     });
 });
 
+describe('HAVING', () => {
+    const validator = new QueryAstValidator();
+    const normalizer = new QueryAstNormalizer();
+
+    it.each([{ ...createQuery() }, { ...createQuery(), groupBy: [] }])(
+        'requires grouping columns',
+        query => {
+            const having = eq(column('u', 'id'), param('id'));
+
+            expect(() => validator.validate({ ...query, having }))
+                .toThrow('HAVING requires a non-empty GROUP BY.');
+        }
+    );
+
+    it('validates aliases in the predicate', () => {
+        expect(() => validator.validate({
+            ...createQuery(),
+            groupBy: [column('u', 'id')],
+            having: eq(column('missing', 'id'), param('id'))
+        })).toThrow('Unknown column alias: missing.');
+    });
+
+    it('copies and freezes the predicate', () => {
+        const having = eq(column('u', 'id'), param('id'));
+        const normalized = normalizer.normalize({
+            ...createQuery(),
+            groupBy: [column('u', 'id')],
+            having
+        });
+
+        expect(normalized.having).toEqual(having);
+        expect(normalized.having).not.toBe(having);
+        expect(Object.isFrozen(normalized.having)).toBe(true);
+    });
+});
+
 describe('QueryAstValidator - ORDER BY', () => {
 
     class User { }

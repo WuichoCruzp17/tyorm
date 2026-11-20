@@ -76,6 +76,12 @@ export class PostgresSelectCompiler implements SqlCompiler {
             parts.push(`GROUP BY ${columns.join(', ')}`);
         }
 
+        const { having } = resolved.query;
+        if (having !== undefined) {
+            const predicateSql = this.predicates.compile(having, resolved, context);
+            parts.push(`HAVING ${predicateSql}`);
+        }
+
         if (resolved.query.orderBy.length > 0) {
             parts.push(
                 this.compileOrderBy(resolved, context)

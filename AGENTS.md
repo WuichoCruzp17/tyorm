@@ -209,9 +209,15 @@ Validación del 20 de noviembre de 2026. Pasaron ambos typecheck, 258 pruebas de
 
 ### 7.4 Fase 5.2.2.7 — GROUP BY en PostgreSQL
 
-`SelectQuery.groupBy` es opcional y acepta referencias a columnas de la raíz o de alias de JOIN. Core valida los nodos y los alias, copia y congela la lista, y resuelve las propiedades a columnas físicas. PostgreSQL emite la cláusula después de WHERE y antes de ORDER BY. Una lista vacía omite la cláusula. HAVING y las funciones agregadas quedan pendientes.
+`SelectQuery.groupBy` es opcional y acepta referencias a columnas de la raíz o de alias de JOIN. Core valida los nodos y los alias, copia y congela la lista, y resuelve las propiedades a columnas físicas. PostgreSQL emite la cláusula después de WHERE y antes de ORDER BY. Una lista vacía omite la cláusula. En esta fase todavía estaban pendientes HAVING y las funciones agregadas.
 
 Validación del 20 de noviembre de 2026. Pasaron ambos typecheck, la comprobación estricta de los archivos de prueba modificados, 262 pruebas de Core y 113 de PostgreSQL. La integración con tablas temporales comprobó que varias filas de una relación ManyToMany se agrupan en una. Las otras tres suites de integración de PostgreSQL quedaron fuera de esta ejecución.
+
+### 7.5 Fase 5.2.2.8 — HAVING en PostgreSQL
+
+`SelectQuery.having` reutiliza los predicados de consulta y requiere un GROUP BY con al menos una columna. Core valida los alias, normaliza el predicado y resuelve sus referencias a columnas. PostgreSQL emite HAVING después de GROUP BY y vincula sus parámetros después de WHERE y antes de ORDER BY y la paginación. Las funciones agregadas quedan pendientes.
+
+Validación del 20 de noviembre de 2026. Pasaron ambos typecheck, la comprobación estricta de los archivos de prueba modificados, 266 pruebas de Core y 115 de PostgreSQL. La integración con tablas temporales verificó que HAVING conserva o descarta el grupo según el parámetro. Las otras tres suites de integración de PostgreSQL quedaron fuera de esta ejecución.
 
 ## 8. Hoja de ruta siguiente
 
@@ -219,7 +225,7 @@ Validación del 20 de noviembre de 2026. Pasaron ambos typecheck, la comprobaci�
 2. **5.2.2.6.2:** completada y validada según la sección 7.1.
 3. **5.2.2.6.3:** completada y validada según la sección 7.2.
 4. **5.2.2.6.4:** completada y validada según la sección 7.3.
-5. **5.2.2.7:** GROUP BY completado y validado según la sección 7.4. Quedan pendientes HAVING y las funciones agregadas.
+5. **5.2.2.7:** GROUP BY completado y validado según la sección 7.4. HAVING quedó completado en la **fase 5.2.2.8** según la sección 7.5. Quedan pendientes las funciones agregadas.
 6. DTO explícitos, proyecciones automáticas y API de consultas tipo records; diseñar pruebas de tipado y mapeo.
 7. Compatibilidad de decoradores legacy después de estabilizar la API moderna.
 8. Ampliación multibase de datos mediante dialectos/drivers independientes; priorizar interfaces estables.

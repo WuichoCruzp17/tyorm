@@ -193,16 +193,28 @@ describe('PostgreSQL chained JOINs', () => {
                     ...query,
                     selections: [{ expression: userId }],
                     groupBy: [userId, roleEnabled],
+                    having: {
+                        kind: 'comparison',
+                        operator: 'gte',
+                        left: userId,
+                        right: { kind: 'parameter', name: 'minimumUserId' }
+                    },
                     orderBy: [{ expression: userId, direction: 'asc' }],
                     limit: 2,
                     offset: 0
                 });
+                const groupingParameters = { region: 'north', enabled: true, tenant: 1 };
                 const groups = await connection.execute(compiler.compile(grouped, {
-                    region: 'north',
-                    enabled: true,
-                    tenant: 1
+                    ...groupingParameters,
+                    minimumUserId: 10
                 }));
                 expect(groups.rows).toEqual([{ user_id: 10 }]);
+
+                const filteredGroups = await connection.execute(compiler.compile(grouped, {
+                    ...groupingParameters,
+                    minimumUserId: 11
+                }));
+                expect(filteredGroups.rows).toEqual([]);
 
                 await connection.rollback();
             } finally {

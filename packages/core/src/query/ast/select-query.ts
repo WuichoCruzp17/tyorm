@@ -45,6 +45,7 @@ export interface SelectQuery {
     readonly joins: readonly QueryJoin[];
     readonly where?: QueryPredicate;
     readonly groupBy?: readonly ColumnExpression[];
+    readonly having?: QueryPredicate;
     readonly orderBy: readonly OrderByItem[];
     readonly limit?: number;
     readonly offset?: number;
