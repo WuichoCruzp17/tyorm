@@ -1,5 +1,6 @@
 
 import type {
+    AggregateExpression,
     ColumnExpression,
     ParameterExpression,
     LiteralExpression,
@@ -44,6 +45,30 @@ export function column(
             'Column property'
         )
     });
+}
+
+export function count(argument?: ColumnExpression): AggregateExpression {
+    return Object.freeze({
+        kind: 'aggregate',
+        function: 'count',
+        ...(argument === undefined ? {} : { argument })
+    });
+}
+
+export function sum(argument: ColumnExpression): AggregateExpression {
+    return Object.freeze({ kind: 'aggregate', function: 'sum', argument });
+}
+
+export function avg(argument: ColumnExpression): AggregateExpression {
+    return Object.freeze({ kind: 'aggregate', function: 'avg', argument });
+}
+
+export function min(argument: ColumnExpression): AggregateExpression {
+    return Object.freeze({ kind: 'aggregate', function: 'min', argument });
+}
+
+export function max(argument: ColumnExpression): AggregateExpression {
+    return Object.freeze({ kind: 'aggregate', function: 'max', argument });
 }
 
 export function param(

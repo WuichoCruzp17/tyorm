@@ -4,7 +4,6 @@ import type {
     SqlCompiler,
     SqlDialect,
     ResolvedSelectQuery,
-    ResolvedColumnReference,
     ResolvedJoin,
     ResolvedJoinCondition,
     ResolvedJoinColumn
@@ -49,7 +48,7 @@ export class PostgresSelectCompiler implements SqlCompiler {
             this.dialect
         );
 
-        const select = this.compileSelect(resolved);
+        const select = this.compileSelect(resolved, context);
         const from = this.compileFrom(resolved);
 
         const parts = [select, from];
@@ -100,7 +99,8 @@ export class PostgresSelectCompiler implements SqlCompiler {
 
 
     private compileSelect(
-        resolved: ResolvedSelectQuery
+        resolved: ResolvedSelectQuery,
+        context: PostgresCompilationContext
     ): string {
 
         const selections = resolved.query.selections;
@@ -115,19 +115,17 @@ export class PostgresSelectCompiler implements SqlCompiler {
 
             const expression = selection.expression;
 
-            if (expression.kind !== 'column') {
+            if (expression.kind !== 'column' && expression.kind !== 'aggregate') {
                 throw new Error(
                     `Unsupported SELECT expression: ${expression.kind}.`
                 );
             }
 
-            const reference = this.findResolvedColumn(
-                resolved,
-                expression.alias,
-                expression.property
-            );
-
-            return this.compileColumn(reference);
+            const sql = this.expressions.compile(expression, resolved, context);
+            if (expression.kind === 'aggregate' && selection.alias !== undefined) {
+                return `${sql} AS ${this.dialect.quoteIdentifier(selection.alias)}`;
+            }
+            return sql;
         });
 
         const distinct = resolved.query.distinct
@@ -167,43 +165,6 @@ export class PostgresSelectCompiler implements SqlCompiler {
 
         return `FROM ${schema}${tableName} AS ${alias}`;
     }
-
-    private compileColumn(
-        reference: ResolvedColumnReference
-    ): string {
-
-        const alias = this.dialect.quoteIdentifier(
-            reference.tableAlias
-        );
-
-        const columnName = this.dialect.quoteIdentifier(
-            reference.columnName
-        );
-
-        return `${alias}.${columnName}`;
-    }
-
-    private findResolvedColumn(
-        resolved: ResolvedSelectQuery,
-        alias: string,
-        property: string
-    ): ResolvedColumnReference {
-
-        const reference = resolved.columns.find(
-            item =>
-                item.sourceAlias === alias &&
-                item.property === property
-        );
-
-        if (!reference) {
-            throw new Error(
-                `Unresolved column "${alias}.${property}".`
-            );
-        }
-
-        return reference;
-    }
-
 
     private compileOrderBy(
         resolved: ResolvedSelectQuery,

@@ -31,7 +31,7 @@ function assertExpression(
     if (
         expression === null ||
         typeof expression !== 'object' ||
-        !['column', 'parameter', 'literal', 'null']
+        !['column', 'parameter', 'literal', 'null', 'aggregate']
             .includes(expression.kind)
     ) {
         throw new QueryAstError(

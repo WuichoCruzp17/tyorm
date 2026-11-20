@@ -15,6 +15,8 @@ const COMPARISONS = new Set([
     'lt', 'lte', 'like', 'not-like'
 ]);
 
+const AGGREGATES = new Set<unknown>(['count', 'sum', 'avg', 'min', 'max']);
+
 type RecordValue = Record<string, unknown>;
 
 function record(value: unknown): RecordValue {
@@ -123,6 +125,22 @@ export class QueryAstValidator {
                     identifier(node.alias, 'column alias');
                     identifier(node.property, 'column property');
                     return;
+
+                case 'aggregate': {
+                    if (!AGGREGATES.has(node.function)) {
+                        throw new QueryAstError('Unknown aggregate function.');
+                    }
+
+                    if (node.argument === undefined && node.function === 'count') {
+                        return;
+                    }
+                    if (node.argument === undefined || record(node.argument).kind !== 'column') {
+                        throw new QueryAstError('Aggregate requires a column argument.');
+                    }
+
+                    this.validateExpression(node.argument);
+                    return;
+                }
 
                 case 'parameter':
                     identifier(node.name, 'parameter name');
@@ -320,27 +338,32 @@ export class QueryAstValidator {
                 aliases.add(alias);
             }
 
-            const checkExpression = (value: unknown) => {
+            let hasAggregate = false;
+            const checkExpression = (value: unknown, clause?: 'WHERE' | 'JOIN ON') => {
                 this.validateExpression(value);
 
-                if (
-                    value.kind === 'column' &&
-                    !aliases.has(value.alias)
-                ) {
-                    throw new QueryAstError(
-                        `Unknown column alias: ${value.alias}.`
-                    );
+                if (value.kind === 'aggregate') {
+                    if (clause !== undefined) {
+                        throw new QueryAstError(`Aggregates are not allowed in ${clause}.`);
+                    }
+
+                    hasAggregate = true;
+                }
+
+                const column = value.kind === 'aggregate' ? value.argument : value;
+                if (column?.kind === 'column' && !aliases.has(column.alias)) {
+                    throw new QueryAstError(`Unknown column alias: ${column.alias}.`);
                 }
             };
 
-            const checkPredicate = (value: unknown): void => {
+            const checkPredicate = (value: unknown, clause?: 'WHERE' | 'JOIN ON'): void => {
                 this.validatePredicate(value);
-
+                const check = (expression: QueryExpression) => checkExpression(expression, clause);
                 const walk = (predicate: QueryPredicate): void => {
                     switch (predicate.kind) {
                         case 'comparison':
-                            checkExpression(predicate.left);
-                            checkExpression(predicate.right);
+                            check(predicate.left);
+                            check(predicate.right);
                             return;
 
                         case 'logical':
@@ -352,18 +375,18 @@ export class QueryAstValidator {
                             return;
 
                         case 'is-null':
-                            checkExpression(predicate.expression);
+                            check(predicate.expression);
                             return;
 
                         case 'in':
-                            checkExpression(predicate.expression);
-                            predicate.values.forEach(checkExpression);
+                            check(predicate.expression);
+                            predicate.values.forEach(check);
                             return;
 
                         case 'between':
-                            checkExpression(predicate.expression);
-                            checkExpression(predicate.lower);
-                            checkExpression(predicate.upper);
+                            check(predicate.expression);
+                            check(predicate.lower);
+                            check(predicate.upper);
                             return;
                     }
                 };
@@ -376,7 +399,7 @@ export class QueryAstValidator {
                 const join = record(item);
 
                 if (join.on !== undefined) {
-                    checkPredicate(join.on);
+                    checkPredicate(join.on, 'JOIN ON');
                 }
             }
 
@@ -410,7 +433,7 @@ export class QueryAstValidator {
             }
 
             if (node.where !== undefined) {
-                checkPredicate(node.where);
+                checkPredicate(node.where, 'WHERE');
             }
 
             if (node.groupBy !== undefined) {
@@ -427,10 +450,6 @@ export class QueryAstValidator {
             }
 
             if (node.having !== undefined) {
-                if (!Array.isArray(node.groupBy) || node.groupBy.length === 0) {
-                    throw new QueryAstError('HAVING requires a non-empty GROUP BY.');
-                }
-
                 checkPredicate(node.having);
             }
 
@@ -453,6 +472,13 @@ export class QueryAstValidator {
                         'Invalid ORDER BY direction.'
                     );
                 }
+            }
+
+            if (
+                node.having !== undefined && !hasAggregate &&
+                (!Array.isArray(node.groupBy) || node.groupBy.length === 0)
+            ) {
+                throw new QueryAstError('HAVING requires grouping columns or an aggregate.');
             }
 
             if (node.limit !== undefined) {

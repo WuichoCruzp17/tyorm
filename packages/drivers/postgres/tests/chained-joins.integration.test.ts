@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
     column,
+    count,
+    gte,
+    param,
+    sum,
     Column,
     Entity,
     getEntityMetadata,
@@ -215,6 +219,33 @@ describe('PostgreSQL chained JOINs', () => {
                     minimumUserId: 11
                 }));
                 expect(filteredGroups.rows).toEqual([]);
+
+                const roleCount = count(column('r', 'id'));
+                const totals = resolver.resolve({
+                    ...query,
+                    selections: [
+                        { expression: userId },
+                        { expression: roleCount, alias: 'role_count' },
+                        { expression: sum(column('r', 'id')), alias: 'role_sum' }
+                    ],
+                    groupBy: [userId],
+                    having: gte(roleCount, param('minimumRoles')),
+                    orderBy: [{ expression: roleCount, direction: 'desc' }],
+                    offset: 0
+                });
+                const matching = await connection.execute(compiler.compile(totals, {
+                    ...groupingParameters,
+                    minimumRoles: 3
+                }));
+                expect(matching.rows).toEqual([
+                    { user_id: 10, role_count: '3', role_sum: '600' }
+                ]);
+
+                const aboveCount = await connection.execute(compiler.compile(totals, {
+                    ...groupingParameters,
+                    minimumRoles: 4
+                }));
+                expect(aboveCount.rows).toEqual([]);
 
                 await connection.rollback();
             } finally {

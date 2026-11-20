@@ -10,6 +10,7 @@ import {
     QueryAstValidator,
     QueryAstNormalizer,
     column,
+    count,
     param,
     eq,
     and,
@@ -303,6 +304,65 @@ describe('GROUP BY', () => {
     });
 });
 
+describe('aggregate expressions', () => {
+    const validator = new QueryAstValidator();
+    const normalizer = new QueryAstNormalizer();
+
+    it('accepts and snapshots aggregate columns in global HAVING', () => {
+        const argument = column('u', 'id');
+        const expression = count(argument);
+        const normalized = normalizer.normalize({
+            ...createQuery(),
+            selections: [{ expression }],
+            having: eq(count(), param('size'))
+        });
+
+        const selection = normalized.selections[0]?.expression;
+        expect(selection).toEqual(expression);
+        expect(selection).not.toBe(expression);
+        if (selection?.kind !== 'aggregate') {
+            throw new Error('Expected a normalized aggregate.');
+        }
+        expect(selection.argument).not.toBe(argument);
+        expect(Object.isFrozen(selection.argument)).toBe(true);
+    });
+
+    it.each([
+        { kind: 'aggregate', function: 'unknown' },
+        { kind: 'aggregate', function: 'sum' },
+        { kind: 'aggregate', function: 'max', argument: count() }
+    ])('rejects invalid aggregate %j', expression => {
+        expect(() => validator.validateExpression(expression)).toThrow(QueryAstError);
+    });
+
+    it('rejects references to undeclared aliases in aggregate arguments', () => {
+        expect(() => validator.validate({
+            ...createQuery(),
+            selections: [{ expression: count(column('unknown', 'id')) }]
+        })).toThrow('Unknown column alias: unknown.');
+    });
+
+    it('rejects aggregates in WHERE and JOIN ON', () => {
+        const predicate = eq(count(), param('size'));
+        const query = createQuery();
+
+        expect(() => validator.validate({ ...query, where: predicate }))
+            .toThrow('Aggregates are not allowed in WHERE.');
+
+        expect(() => validator.validate({
+            ...query,
+            joins: [{
+                kind: 'join',
+                type: 'inner',
+                sourceAlias: 'u',
+                relation: 'roles',
+                alias: 'r',
+                on: predicate
+            }]
+        })).toThrow('Aggregates are not allowed in JOIN ON.');
+    });
+});
+
 describe('HAVING', () => {
     const validator = new QueryAstValidator();
     const normalizer = new QueryAstNormalizer();
@@ -313,7 +373,7 @@ describe('HAVING', () => {
             const having = eq(column('u', 'id'), param('id'));
 
             expect(() => validator.validate({ ...query, having }))
-                .toThrow('HAVING requires a non-empty GROUP BY.');
+                .toThrow('HAVING requires grouping columns or an aggregate.');
         }
     );
 

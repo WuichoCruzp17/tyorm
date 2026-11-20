@@ -34,6 +34,14 @@ export type ExpressionResolutionContext = Pick<
  * PostgresCompilationContext.
  */
 export class PostgresExpressionCompiler {
+    private static readonly aggregates = new Map([
+        ['count', 'COUNT'],
+        ['sum', 'SUM'],
+        ['avg', 'AVG'],
+        ['min', 'MIN'],
+        ['max', 'MAX']
+    ]);
+
 
     constructor(
         private readonly dialect: SqlDialect =
@@ -56,6 +64,24 @@ export class PostgresExpressionCompiler {
                     expression.property,
                     resolved
                 );
+
+            case 'aggregate': {
+                const name = PostgresExpressionCompiler.aggregates.get(expression.function);
+                if (name === undefined) {
+                    throw new Error('Unsupported aggregate function.');
+                }
+
+                const argument = expression.argument;
+                if (argument === undefined) {
+                    if (expression.function !== 'count') {
+                        throw new Error('Aggregate requires a column argument.');
+                    }
+                    return 'COUNT(*)';
+                }
+
+                const column = this.compileColumn(argument.alias, argument.property, resolved);
+                return `${name}(${column})`;
+            }
 
             case 'parameter':
                 return context.bind(expression.name);

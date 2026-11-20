@@ -28,7 +28,20 @@ export interface NullExpression {
     readonly kind: 'null';
 }
 
+export type AggregateExpression =
+    | {
+        readonly kind: 'aggregate';
+        readonly function: 'count';
+        readonly argument?: ColumnExpression;
+    }
+    | {
+        readonly kind: 'aggregate';
+        readonly function: 'sum' | 'avg' | 'min' | 'max';
+        readonly argument: ColumnExpression;
+    };
+
 export type QueryExpression =
+    | AggregateExpression
     | ColumnExpression
     | ParameterExpression
     | LiteralExpression

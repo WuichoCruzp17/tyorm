@@ -11,6 +11,13 @@ import {
     Column,
     QuerySemanticResolver,
     column,
+    count,
+    sum,
+    avg,
+    min,
+    max,
+    gt,
+    param,
     getEntityMetadata,
     OrmMetadataModel,
     ManyToOne,
@@ -625,6 +632,31 @@ describe('PostgresSelectCompiler', () => {
                 'WHERE "u"."age" >= $1 GROUP BY "u"."first_name", "u"."age" ' +
                 'ORDER BY "u"."first_name" ASC LIMIT $2',
             parameters: [18, 5]
+        });
+    });
+
+    it('compiles aggregate projections, predicates and ordering', () => {
+        const { User, resolver, compiler } = createFixture();
+        const age = column('u', 'age');
+        const resolved = resolver.resolve({
+            ...createSelect(User, []),
+            selections: [
+                { expression: count(), alias: 'total' },
+                { expression: count(age) },
+                { expression: sum(age) },
+                { expression: avg(age) },
+                { expression: min(age) },
+                { expression: max(age) }
+            ],
+            having: gt(count(), param('minimum')),
+            orderBy: [{ expression: max(age), direction: 'desc' }]
+        });
+
+        expect(compiler.compile(resolved, { minimum: 2 })).toEqual({
+            sql: 'SELECT COUNT(*) AS "total", COUNT("u"."age"), SUM("u"."age"), ' +
+                'AVG("u"."age"), MIN("u"."age"), MAX("u"."age") FROM "users" AS "u" ' +
+                'HAVING COUNT(*) > $1 ORDER BY MAX("u"."age") DESC',
+            parameters: [2]
         });
     });
 

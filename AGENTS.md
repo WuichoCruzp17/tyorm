@@ -215,9 +215,15 @@ Validación del 20 de noviembre de 2026. Pasaron ambos typecheck, la comprobaci�
 
 ### 7.5 Fase 5.2.2.8 — HAVING en PostgreSQL
 
-`SelectQuery.having` reutiliza los predicados de consulta y requiere un GROUP BY con al menos una columna. Core valida los alias, normaliza el predicado y resuelve sus referencias a columnas. PostgreSQL emite HAVING después de GROUP BY y vincula sus parámetros después de WHERE y antes de ORDER BY y la paginación. Las funciones agregadas quedan pendientes.
+`SelectQuery.having` reutiliza los predicados de consulta y requiere un GROUP BY con al menos una columna. Core valida los alias, normaliza el predicado y resuelve sus referencias a columnas. PostgreSQL emite HAVING después de GROUP BY y vincula sus parámetros después de WHERE y antes de ORDER BY y la paginación. Las funciones agregadas se incorporaron en la fase 5.2.2.9.
 
 Validación del 20 de noviembre de 2026. Pasaron ambos typecheck, la comprobación estricta de los archivos de prueba modificados, 266 pruebas de Core y 115 de PostgreSQL. La integración con tablas temporales verificó que HAVING conserva o descarta el grupo según el parámetro. Las otras tres suites de integración de PostgreSQL quedaron fuera de esta ejecución.
+
+### 7.6 Fase 5.2.2.9 — Funciones agregadas en PostgreSQL
+
+Core expone `count()`, `count(columna)`, `sum(columna)`, `avg(columna)`, `min(columna)` y `max(columna)`. Las expresiones agregadas se admiten en SELECT, HAVING y ORDER BY. HAVING puede operar sobre un grupo global cuando la consulta contiene un agregado. Los agregados sobre columnas usan los nombres físicos resueltos y las proyecciones agregadas admiten un alias. PostgreSQL determina la compatibilidad de tipos y las reglas de agrupación.
+
+Validación del 20 de noviembre de 2026. Pasaron ambos typecheck, la comprobación estricta de los archivos de prueba modificados, 272 pruebas de Core y 116 de PostgreSQL. La integración con tablas temporales comprobó COUNT y SUM sobre una relación ManyToMany y el filtrado por el conteo. Las otras tres suites de integración de PostgreSQL quedaron fuera de esta ejecución.
 
 ## 8. Hoja de ruta siguiente
 
@@ -225,7 +231,7 @@ Validación del 20 de noviembre de 2026. Pasaron ambos typecheck, la comprobaci�
 2. **5.2.2.6.2:** completada y validada según la sección 7.1.
 3. **5.2.2.6.3:** completada y validada según la sección 7.2.
 4. **5.2.2.6.4:** completada y validada según la sección 7.3.
-5. **5.2.2.7:** GROUP BY completado y validado según la sección 7.4. HAVING quedó completado en la **fase 5.2.2.8** según la sección 7.5. Quedan pendientes las funciones agregadas.
+5. **5.2.2.7:** GROUP BY completado y validado según la sección 7.4. HAVING quedó completado en la **fase 5.2.2.8** según la sección 7.5. Las funciones agregadas quedaron completadas en la **fase 5.2.2.9** según la sección 7.6.
 6. DTO explícitos, proyecciones automáticas y API de consultas tipo records; diseñar pruebas de tipado y mapeo.
 7. Compatibilidad de decoradores legacy después de estabilizar la API moderna.
 8. Ampliación multibase de datos mediante dialectos/drivers independientes; priorizar interfaces estables.

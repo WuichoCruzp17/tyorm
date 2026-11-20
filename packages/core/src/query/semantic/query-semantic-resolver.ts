@@ -227,6 +227,11 @@ export class QuerySemanticResolver {
             expression: QueryExpression
         ): void => {
 
+            if (expression.kind === 'aggregate' && expression.argument !== undefined) {
+                resolveExpression(expression.argument);
+                return;
+            }
+
             if (expression.kind !== 'column') {
                 return;
             }

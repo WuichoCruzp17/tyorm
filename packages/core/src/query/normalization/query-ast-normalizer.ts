@@ -15,6 +15,14 @@ function cloneExpression(
         case 'column':
             return Object.freeze({ ...expression });
 
+        case 'aggregate':
+            return expression.argument === undefined
+                ? Object.freeze({ ...expression })
+                : Object.freeze({
+                    ...expression,
+                    argument: Object.freeze({ ...expression.argument })
+                });
+
         case 'parameter':
             return Object.freeze({ ...expression });
 
