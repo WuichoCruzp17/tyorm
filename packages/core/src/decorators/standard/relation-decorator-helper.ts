@@ -3,9 +3,11 @@ import { MetadataError } from '../../metadata/metadata-error';
 
 import { requireDecoratorMetadata } from './metadata-context';
 
+import type { FieldDeclarationContext } from './legacy-decorator-adapter';
+
 export function getRelationDecoratorContext(
     decoratorName: string,
-    context: ClassFieldDecoratorContext
+    context: FieldDeclarationContext
 ): DecoratorMetadataObject {
     if (context.static || context.private) {
         throw new MetadataError(

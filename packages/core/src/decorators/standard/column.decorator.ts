@@ -9,13 +9,12 @@ import {
 } from './decorator-storage';
 import { requireDecoratorMetadata } from './metadata-context';
 
+import { compatibleFieldDecorator } from './legacy-decorator-adapter';
+
 export function Column(
   options: ColumnOptions
 ) {
-  return function (
-    _value: undefined,
-    context: ClassFieldDecoratorContext
-  ): void {
+  return compatibleFieldDecorator(context => {
     if (context.static || context.private) {
       throw new Error(
         '@Column can only decorate public instance fields.'
@@ -30,5 +29,5 @@ export function Column(
         options: { ...options }
       }
     );
-  };
+  });
 }

@@ -9,13 +9,12 @@ import {
 } from './decorator-storage';
 import { requireDecoratorMetadata } from './metadata-context';
 
+import { compatibleFieldDecorator } from './legacy-decorator-adapter';
+
 export function PrimaryKey(
     options: PrimaryKeyOptions
 ) {
-    return function (
-        _value: undefined,
-        context: ClassFieldDecoratorContext
-    ): void {
+    return compatibleFieldDecorator(context => {
         if (context.static || context.private) {
             throw new Error(
                 '@PrimaryKey can only decorate public instance fields.'
@@ -30,5 +29,5 @@ export function PrimaryKey(
                 options: { ...options }
             }
         );
-    };
+    });
 }

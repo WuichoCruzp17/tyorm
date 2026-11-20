@@ -12,13 +12,12 @@ import {
     getRelationDecoratorContext
 } from './relation-decorator-helper';
 
+import { compatibleFieldDecorator } from './legacy-decorator-adapter';
+
 export function JoinColumn(
     options: JoinColumnOptions | readonly JoinColumnOptions[] = {}
 ) {
-    return function (
-        _value: undefined,
-        context: ClassFieldDecoratorContext
-    ): void {
+    return compatibleFieldDecorator(context => {
         const metadata = getRelationDecoratorContext(
             '@JoinColumn',
             context
@@ -32,5 +31,5 @@ export function JoinColumn(
             propertyKey: context.name,
             columns: columns.map(column => ({ ...column }))
         });
-    };
+    });
 }

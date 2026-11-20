@@ -16,6 +16,8 @@ import {
 } from './relation-decorator-helper';
 
 
+import { compatibleFieldDecorator } from './legacy-decorator-adapter';
+
 export function createRelationDecorator<
     T extends object
 >(
@@ -24,10 +26,7 @@ export function createRelationDecorator<
     inverse?: InverseRelationReference<T>,
     options: RelationOptions = {}
 ) {
-    return function (
-        _value: undefined,
-        context: ClassFieldDecoratorContext
-    ): void {
+    return compatibleFieldDecorator(context => {
         const metadata = getRelationDecoratorContext(
             `@${type}`,
             context
@@ -40,5 +39,5 @@ export function createRelationDecorator<
             ...(inverse !== undefined ? { inverse } : {}),
             options: { ...options }
         });
-    };
+    });
 }

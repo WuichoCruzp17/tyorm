@@ -12,13 +12,12 @@ import {
     getRelationDecoratorContext
 } from './relation-decorator-helper';
 
+import { compatibleFieldDecorator } from './legacy-decorator-adapter';
+
 export function JoinTable(
     options: JoinTableOptions = {}
 ) {
-    return function (
-        _value: undefined,
-        context: ClassFieldDecoratorContext
-    ): void {
+    return compatibleFieldDecorator(context => {
         const metadata = getRelationDecoratorContext(
             '@JoinTable',
             context
@@ -45,5 +44,5 @@ export function JoinTable(
                     : {})
             }
         });
-    };
+    });
 }

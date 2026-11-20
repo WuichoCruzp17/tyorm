@@ -244,6 +244,12 @@ Validación del 20 de noviembre de 2026. Pasaron ambos typecheck, la comprobaci�
 
 Validación del 20 de noviembre de 2026. Pasaron ambos typecheck, la comprobación estricta de las pruebas modificadas, 285 pruebas de Core y 117 de PostgreSQL. La integración comprobó la conversión de COUNT a bigint y las pruebas unitarias reutilizaron un esquema con dos selecciones diferentes. Las otras tres suites de integración de PostgreSQL quedaron fuera de esta ejecución.
 
+### 7.10 Compatibilidad con decoradores legacy
+
+Los decoradores públicos de entidad, campos y relaciones aceptan tanto la convención Stage 3 como la de TypeScript con `experimentalDecorators: true`. El adaptador legacy crea metadatos propios por clase y reutiliza los contratos y resolvers existentes. Los tipos de columna siguen declarándose en las opciones y la compatibilidad funciona con `emitDecoratorMetadata: false`.
+
+Validación del 20 de noviembre de 2026. Pasaron ambos typecheck, el typecheck de pruebas de Core, 291 pruebas de Core y 117 de PostgreSQL. La suite nueva ejecutó código legacy emitido por TypeScript, resolvió las cuatro relaciones y comprobó la herencia mixta y el rechazo de miembros estáticos y métodos. Las otras tres suites de integración de PostgreSQL quedaron fuera de esta ejecución.
+
 ## 8. Hoja de ruta siguiente
 
 1. **5.2.2.6.1:** completada y validada según la sección 7.
@@ -252,7 +258,7 @@ Validación del 20 de noviembre de 2026. Pasaron ambos typecheck, la comprobaci�
 4. **5.2.2.6.4:** completada y validada según la sección 7.3.
 5. **5.2.2.7:** GROUP BY completado y validado según la sección 7.4. HAVING quedó completado en la **fase 5.2.2.8** según la sección 7.5. Las funciones agregadas quedaron completadas en la **fase 5.2.2.9** según la sección 7.6.
 6. DTO explícitos completados y validados según la sección 7.7. Proyecciones automáticas validadas según la sección 7.8. API de consultas tipo records validada según la sección 7.9.
-7. Compatibilidad de decoradores legacy después de estabilizar la API moderna.
+7. Compatibilidad de decoradores legacy completada y validada según la sección 7.10.
 8. Ampliación multibase de datos mediante dialectos/drivers independientes; priorizar interfaces estables.
 9. Mantener/regresar a pruebas de integración PostgreSQL, especialmente comportamiento tras errores SQL y consultas pendientes en una transacción.
 
