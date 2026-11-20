@@ -259,8 +259,34 @@ Validación del 20 de noviembre de 2026. Pasaron ambos typecheck, el typecheck d
 5. **5.2.2.7:** GROUP BY completado y validado según la sección 7.4. HAVING quedó completado en la **fase 5.2.2.8** según la sección 7.5. Las funciones agregadas quedaron completadas en la **fase 5.2.2.9** según la sección 7.6.
 6. DTO explícitos completados y validados según la sección 7.7. Proyecciones automáticas validadas según la sección 7.8. API de consultas tipo records validada según la sección 7.9.
 7. Compatibilidad de decoradores legacy completada y validada según la sección 7.10.
-8. Ampliación multibase de datos mediante dialectos/drivers independientes; priorizar interfaces estables.
-9. Mantener/regresar a pruebas de integración PostgreSQL, especialmente comportamiento tras errores SQL y consultas pendientes en una transacción.
+8. **Siguiente fase:** DataSource, selección de driver y repositorios de lectura. Ver sección 8.1.
+9. Ampliar a un segundo motor tras estabilizar el contrato del proveedor.
+10. Mantener/regresar a pruebas de integración PostgreSQL, especialmente comportamiento tras errores SQL y consultas pendientes en una transacción.
+
+### 8.1 Próxima fase — DataSource y repositorios
+
+**Objetivo.** Acercar la API de aplicación a `JpaRepository` de Spring Data JPA mediante repositorios tipados por entidad. Las entidades, filtros y repositorios se consumen desde Core. El motor se elige en la configuración de arranque y se instala como dependencia de la aplicación. Referencia de comportamiento: [Spring Data JPA — JpaRepository](https://docs.spring.io/spring-data/jpa/reference/api/java/org/springframework/data/jpa/repository/JpaRepository.html).
+
+**Punto de partida.** `DriverConfig.type` identifica el motor, pero hoy la aplicación instancia `PostgreSQLDriver` y `PostgresSelectCompiler` por separado. `DatabaseDriver` gestiona conexiones y `SqlCompiler` solo acepta `ResolvedSelectQuery`. El pipeline actual resuelve metadatos, claves y relaciones. Las proyecciones devuelven filas, DTO o records mediante APIs específicas. Falta una capa que coordine el arranque, la ejecución y el mapeo de filas a entidades.
+
+| Entrega | Cambios previstos |
+| --- | --- |
+| **A. Arranque y selección del motor** | Añadir `DataSource` en Core para registrar entidades, construir el modelo y el resolver, inicializar el driver y gestionar su cierre. Definir un contrato de proveedor que entregue driver y compilador compatibles. PostgreSQL implementará ese proveedor. Seleccionar por `type` mediante un mapa explícito de proveedores o cargadores autorizados y admitir un proveedor inyectado para pruebas o extensiones. |
+| **B. Repositorios de lectura** | Exponer desde Core un repositorio por entidad registrada mediante `getRepository(Entity)`. Implementar `findById`, `findAll`, `existsById` y `count` sobre el AST de SELECT, el resolver y el compilador actuales. Crear selecciones a partir de metadatos y mapear columnas escalares con alias controlados. Mantener disponibles las API actuales de consultas y proyecciones. |
+| **C. Repositorios en transacciones** | Exponer un alcance transaccional que entregue repositorios vinculados a la conexión de esa transacción. Reutilizar `TransactionManager` y su contexto administrado. Las llamadas del alcance deben usar el mismo ejecutor, incluso si el repositorio se solicita varias veces. |
+| **D. Escritura y semántica de save** | Diseñar AST y compilación de INSERT, UPDATE y DELETE con parámetros, claves y valores generados. Validar las reglas de escritura de los metadatos. Definir después cuándo `save` inserta o actualiza, qué devuelve, cómo identifica una entidad nueva y qué garantías ofrece ante concurrencia. |
+
+**Distribución de drivers.** La instalación se resuelve con npm o pnpm. El arranque carga únicamente el proveedor seleccionado entre los paquetes instalados y devuelve un error claro si el motor no está soportado o falta su paquete. Core conserva sus contratos independientes de PostgreSQL. Validar la resolución del paquete con una aplicación externa al workspace antes de cerrar la entrega A.
+
+**Decisiones de contrato para la primera implementación.**
+
+- Proponer `null` para `findById` sin coincidencias y una lista vacía para `findAll` sin resultados. Para claves compuestas, usar un objeto por nombre de propiedad y validar cada componente antes de ejecutar. Revisar cómo expresar los tipos de clave en TypeScript: los decoradores registran metadatos en ejecución y la clase por sí sola no distingue qué campos son claves.
+- Definir la materialización por separado de los DTO. `EntityTarget` admite constructores abstractos o con argumentos, así que la estrategia debe establecer qué instancias puede crear el repositorio y cómo se registran fábricas cuando hagan falta. Revisar también claves de propiedad de tipo `symbol`, mientras las referencias del AST actual usan nombres de tipo `string`. La primera entrega debe especificar el alcance de las columnas escalares y de la carga de relaciones.
+- Definir el tipo de `count` y probarlo con el resultado real del driver. PostgreSQL entrega habitualmente un `COUNT` como cadena; una conversión a `number` necesita validar el rango seguro.
+- Validar campos de ordenación con metadatos y definir un orden estable para la paginación. Un resultado paginado con total, al estilo `Page`, requiere un contrato propio. `findAll` con límite y desplazamiento puede devolver una lista en la primera entrega.
+- Definir el comportamiento de `DataSource` antes de conectar, después de cerrar y ante fallos durante el arranque. Cada operación fuera de una transacción debe devolver su conexión al pool. Dentro de una transacción, el alcance gestiona la conexión compartida.
+
+**Criterios de aceptación.** Probar arranque, selección y ausencia de proveedor, liberación de conexiones, entidades sin registrar, resultados vacíos, nombres físicos distintos de las propiedades, claves simples y compuestas, paginación y conteos. Verificar repositorios con PostgreSQL real y comprobar aislamiento, commit y rollback de las operaciones transaccionales. Cada archivo nuevo de implementación debe incluir su suite unitaria correspondiente.
 
 ## 9. Comandos de validación
 
