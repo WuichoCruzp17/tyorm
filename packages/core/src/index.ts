@@ -58,3 +58,4 @@ export { ensureSymbolMetadata } from './runtime';
 
 
 export  *  from './query/compiler';
+export * from './data-source';

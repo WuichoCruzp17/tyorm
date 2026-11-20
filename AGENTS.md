@@ -316,6 +316,13 @@ Validación del 20 de noviembre de 2026. Pasaron ambos typecheck, el typecheck d
 
 **Criterios de aceptación.** Probar arranque, selección y ausencia de proveedor, liberación de conexiones, entidades sin registrar, resultados vacíos, nombres físicos distintos de las propiedades, claves simples y compuestas, paginación y conteos. Verificar repositorios con PostgreSQL real y comprobar aislamiento, commit y rollback de las operaciones transaccionales. Cada archivo nuevo de implementación debe incluir su suite unitaria correspondiente.
 
+#### Entrega A completada — Arranque y selección del motor
+
+`DataSource.connect` registra las entidades y selecciona el cargador del mapa explícito `providers` por `type`. Para PostgreSQL, la configuración puede declarar `postgres: async () => (await import('@tyorm/postgres')).postgresProvider()`. El proveedor crea el driver y su compilador. `DataSource.execute` resuelve y ejecuta un SELECT y libera la conexión. `close` comparte un único cierre del pool y rechaza nuevas ejecuciones desde que comienza.
+
+Validación del 20 de noviembre de 2026. Pasaron el build, ambos typecheck, el chequeo de tipos de pruebas de Core, 296 pruebas de Core y 118 de PostgreSQL. Las otras tres suites de integración de PostgreSQL quedaron fuera de esta ejecución. Una aplicación temporal externa al workspace instaló ambos tarballs con npm y ejecutó un SELECT parametrizado en PostgreSQL. El tarball del driver se limitó a los artefactos compilados y al manifiesto. La entrega B queda pendiente.
+
+
 ## 9. Comandos de validación
 
 Ejecutar desde la raíz del monorepo, confirmando que los scripts existen:

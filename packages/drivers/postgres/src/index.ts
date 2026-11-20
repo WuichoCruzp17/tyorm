@@ -7,3 +7,4 @@ export {
 export {
     PostgresSelectCompiler
 } from './query/compiler';
+export { postgresProvider } from './postgres-provider';
