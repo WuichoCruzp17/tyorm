@@ -1,0 +1,18 @@
+{
+    "extends": "../../../../tsconfig.json",
+    "compilerOptions": {
+        "rootDir": ".",
+        "outDir": "../dist",
+        "lib": [
+            "ES2022",
+            "ESNext.Decorators",
+            "DOM"
+        ],
+        "declaration": false,
+        "declarationMap": false,
+        "sourceMap": false
+    },
+    "files": [
+        "main.ts"
+    ]
+}
