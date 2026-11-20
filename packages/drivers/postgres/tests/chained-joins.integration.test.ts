@@ -8,6 +8,7 @@ import {
     Column,
     Entity,
     executeDtoQuery,
+    executeProjectionQuery,
     getEntityMetadata,
     JoinColumn,
     JoinTable,
@@ -273,6 +274,16 @@ describe('PostgreSQL chained JOINs', () => {
                 );
                 expect(summaries).toEqual([new UserRoleSummary(10, 3n)]);
                 expect(summaries[0]).toBeInstanceOf(UserRoleSummary);
+
+                const projected = await executeProjectionQuery(
+                    connection,
+                    resolver,
+                    compiler,
+                    totals.query,
+                    { memberId: userId, roleCount },
+                    { ...groupingParameters, minimumRoles: 3 }
+                );
+                expect(projected).toEqual([{ memberId: 10, roleCount: '3' }]);
 
                 await connection.rollback();
             } finally {

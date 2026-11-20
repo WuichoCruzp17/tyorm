@@ -12,7 +12,7 @@ TyORM es un ORM en TypeScript inspirado en JPA (Java), diseñado para ser multib
 - API de decoradores modernos TC39 Stage 3 primero; compatibilidad con decoradores legacy en una fase posterior.
 - API de consultas y decoradores, ambas.
 - Relaciones `ManyToOne`, `OneToMany`, `OneToOne`, `ManyToMany`.
-- DTO explícitos y proyecciones automáticas, aún por completar.
+- DTO explícitos y proyecciones automáticas disponibles. La API de consultas tipo records queda pendiente.
 - Cambios incrementales, con pruebas y typecheck por cada fase.
 
 ## 2. Entorno y organización
@@ -231,6 +231,12 @@ Validación del 20 de noviembre de 2026. Pasaron ambos typecheck, la comprobaci�
 
 Validación del 20 de noviembre de 2026. Pasaron ambos typecheck, la comprobación estricta de las pruebas modificadas, 272 pruebas de Core y 117 de PostgreSQL. La integración construyó una instancia del DTO a partir de una columna con alias y un COUNT de PostgreSQL convertido de string a bigint por el mapper. Las otras tres suites de integración de PostgreSQL quedaron fuera de esta ejecución.
 
+### 7.8 Proyecciones automáticas
+
+`executeProjectionQuery` recibe un mapa de alias a expresiones y devuelve un objeto por fila con las claves inferidas de ese mapa. Reutiliza la ejecución y validación de alias de `executeDtoQuery`. Cada propiedad conserva el valor del driver, incluidos los valores nulos, y tiene tipo `unknown`.
+
+Validación del 20 de noviembre de 2026. Pasaron ambos typecheck, la comprobación estricta de las pruebas modificadas, 282 pruebas de Core y 117 de PostgreSQL. La integración verificó una proyección automática con una columna y un agregado. Las otras tres suites de integración de PostgreSQL quedaron fuera de esta ejecución.
+
 ## 8. Hoja de ruta siguiente
 
 1. **5.2.2.6.1:** completada y validada según la sección 7.
@@ -238,7 +244,7 @@ Validación del 20 de noviembre de 2026. Pasaron ambos typecheck, la comprobaci�
 3. **5.2.2.6.3:** completada y validada según la sección 7.2.
 4. **5.2.2.6.4:** completada y validada según la sección 7.3.
 5. **5.2.2.7:** GROUP BY completado y validado según la sección 7.4. HAVING quedó completado en la **fase 5.2.2.8** según la sección 7.5. Las funciones agregadas quedaron completadas en la **fase 5.2.2.9** según la sección 7.6.
-6. DTO explícitos completados y validados según la sección 7.7. Siguen las proyecciones automáticas y la API de consultas tipo records.
+6. DTO explícitos completados y validados según la sección 7.7. Proyecciones automáticas validadas según la sección 7.8. Sigue la API de consultas tipo records.
 7. Compatibilidad de decoradores legacy después de estabilizar la API moderna.
 8. Ampliación multibase de datos mediante dialectos/drivers independientes; priorizar interfaces estables.
 9. Mantener/regresar a pruebas de integración PostgreSQL, especialmente comportamiento tras errores SQL y consultas pendientes en una transacción.

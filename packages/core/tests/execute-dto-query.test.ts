@@ -4,6 +4,7 @@ import {
     count,
     Entity,
     executeDtoQuery,
+    executeProjectionQuery,
     getEntityMetadata,
     OrmMetadataModel,
     param,
@@ -52,6 +53,30 @@ function createFixture(rows: Record<string, unknown>[] = []) {
     const execute = vi.spyOn(executor, 'execute');
     return { query, resolver, compiled, compile, executor, execute };
 }
+
+describe('executeProjectionQuery', () => {
+    it('infers aliases and returns only the projected driver values', async () => {
+        const { query, resolver, compile, executor } = createFixture([
+            { userId: 2, total: '5', extra: 'ignored' },
+            { userId: 1, total: null }
+        ]);
+        const rows = await executeProjectionQuery(executor, resolver, { compile }, query, {
+            userId: column('u', 'id'),
+            total: count()
+        });
+
+        expectTypeOf(rows).toEqualTypeOf<Readonly<Record<'userId' | 'total', unknown>>[]>();
+        expect(rows).toEqual([{ userId: 2, total: '5' }, { userId: 1, total: null }]);
+    });
+
+    it('rejects an alias missing from the result', async () => {
+        const { query, resolver, compile, executor } = createFixture([{ user_id: 1 }]);
+
+        await expect(executeProjectionQuery(executor, resolver, { compile }, query, {
+            userId: column('u', 'id')
+        })).rejects.toThrow('Missing DTO projection alias "userId" in query result.');
+    });
+});
 
 describe('executeDtoQuery', () => {
     it('resolves aliases, forwards parameters and maps rows in order', async () => {
