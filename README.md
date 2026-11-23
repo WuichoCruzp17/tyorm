@@ -361,6 +361,20 @@ async function findNearest(
 
 `vectorDistance` supports Euclidean distance (`'l2'`, the default) and cosine distance (`'cosine'`). The driver binds the query vector as a parameter. The embedding length must match the column dimension. The SQLite provider rejects vector distance expressions.
 
+### Call a PostgreSQL function
+
+Use `executeFunction` to call an existing PostgreSQL function and receive its rows. Pass the schema and function name separately, and supply positional arguments as values.
+
+```ts
+const { rows: sales } = await db.executeFunction({
+    schema: 'reporting',
+    name: 'sales_by_customer',
+    args: [1]
+});
+```
+
+Inside `db.transaction`, use `scope.executeFunction` to share the transaction's connection with repository operations. PostgreSQL resolves overloaded function signatures from the supplied arguments.
+
 ## Driver extension points
 
 - `DriverProvider` creates a compatible driver and compiler for the engine selected by DataSource.

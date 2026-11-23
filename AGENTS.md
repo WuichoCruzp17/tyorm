@@ -386,6 +386,12 @@ Pasaron el build de Core, los tres typecheck y 312 pruebas de Core, 154 del paqu
 
 Validación de extremo a extremo del 23 de noviembre de 2026. La integración pasó por el driver PostgreSQL de TyORM y `pg` contra un servidor TCP temporal de PGlite con la extensión pgvector 0.8.7. Verificó el orden y la distancia de los vecinos para L2 y coseno, y el error de dimensiones incompatibles. El servidor PostgreSQL local sigue sin la extensión. Para reproducir la prueba con una base que ya tenga pgvector habilitado, configurar sus variables PG y ejecutar `pnpm --filter @tyorm/postgres exec vitest run --mode test tests/vector.integration.test.ts`.
 
+### Funciones SQL de PostgreSQL
+
+`DataSource.executeFunction` y `TransactionScope.executeFunction` invocan funciones existentes y devuelven sus filas. El compilador PostgreSQL cita el esquema y nombre por separado y vincula los argumentos posicionales mediante parámetros. El contexto administrado conserva la misma conexión durante la transacción. Los proveedores sin ese compilador rechazan la operación.
+
+Validación del 23 de noviembre de 2026. Pasaron los tres builds y typecheck, el chequeo estricto de las pruebas modificadas y las suites con 313 pruebas de Core, 158 de PostgreSQL y 7 de SQLite. La integración en PostgreSQL local verificó el retorno de filas y la reversión de una escritura de la función. Quedan pendientes los procedimientos con CALL.
+
 ## 9. Comandos de validación
 
 Ejecutar desde la raíz del monorepo, confirmando que los scripts existen:

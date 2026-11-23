@@ -1290,3 +1290,15 @@ describe('PostgreSQL vector distance', () => {
         expect(() => resolve(vectorDistance(column('d', 'id'), [1]))).toThrow('must have type vector');
     });
 });
+
+it('quotes routine identifiers and binds arguments separately', () => {
+    const compiler = new PostgresSelectCompiler();
+    expect(compiler.compileFunction({ schema: 'report"ing', name: 'order.total', args: [7, "O'Brien", null] }))
+        .toEqual({
+            sql: 'SELECT * FROM "report""ing"."order.total"($1, $2, $3)',
+            parameters: [7, "O'Brien", null]
+        });
+    expect(compiler.compileFunction({ name: 'today' }))
+        .toEqual({ sql: 'SELECT * FROM "today"()', parameters: [] });
+    expect(() => compiler.compileFunction({ name: ' ' })).toThrow('Invalid PostgreSQL function identifier');
+});

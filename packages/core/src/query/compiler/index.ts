@@ -7,5 +7,6 @@ export type {
 } from './sql-dialect';
 
 export type {
+    FunctionCall,
     SqlCompiler
 } from './sql-compiler';

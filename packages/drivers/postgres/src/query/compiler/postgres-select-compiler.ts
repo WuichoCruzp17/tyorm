@@ -1,6 +1,7 @@
 
 import type {
     CompiledQuery,
+    FunctionCall,
     SqlCompiler,
     SqlDialect,
     ResolvedSelectQuery,
@@ -98,6 +99,20 @@ export class PostgresSelectCompiler implements SqlCompiler {
         });
     }
 
+
+    compileFunction(call: FunctionCall): CompiledQuery {
+        const quote = (identifier: string) => {
+            if (typeof identifier !== 'string' || !identifier.trim() || identifier.includes('\0')) {
+                throw new Error('Invalid PostgreSQL function identifier.');
+            }
+            return this.dialect.quoteIdentifier(identifier);
+        };
+        const name = quote(call.name);
+        const qualified = call.schema === undefined ? name : `${quote(call.schema)}.${name}`;
+        const context = new PostgresCompilationContext({}, this.dialect);
+        const args = Array.from(call.args ?? [], arg => context.bindValue(arg));
+        return { sql: `SELECT * FROM ${qualified}(${args.join(', ')})`, parameters: context.getParameters() };
+    }
 
     compileMutation(query: ResolvedMutation): CompiledQuery {
         const context = new PostgresCompilationContext({}, this.dialect);
