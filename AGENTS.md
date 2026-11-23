@@ -380,6 +380,8 @@ Pasaron el build, los cuatro typecheck y la regresión del monorepo. Las cinco p
 
 Validación de escrituras. Pasaron los builds de Core y MySQL, los cuatro typecheck y 474 pruebas del monorepo. La integración contra MySQL 8.2.0 cubrió la clave generada, el retorno de filas, el guardado por clave compuesta, el conflicto en una clave única secundaria y el rollback.
 
+Cierre del alcance MySQL. Pasaron los cuatro builds, los cuatro typecheck, el chequeo estricto de las dos suites modificadas y 478 pruebas sin omisiones. La suite de paridad ejecutó nueve casos entre PostgreSQL, SQLite y MySQL. En MySQL 8.2.0 se verificaron dos transacciones READ COMMITTED solapadas sobre la misma clave asignada en InnoDB. La prueba usa la tabla dedicada `tyorm_mysql_concurrent` y limpia únicamente su fila de prueba. Los tarballs de Core y MySQL se instalaron con npm en una aplicación temporal fuera del monorepo. Esa aplicación compiló y verificó carga dinámica del proveedor, generación de clave, lectura y actualización.
+
 ## 9. Comandos de validación
 
 Ejecutar desde la raíz del monorepo, confirmando que los scripts existen:

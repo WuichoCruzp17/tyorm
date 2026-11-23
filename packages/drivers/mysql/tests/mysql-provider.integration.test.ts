@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Column, DataSource, Entity, PrimaryKey } from '@tyorm/core';
 import { expect, it } from 'vitest';
 import { mysqlProvider } from '../src';
@@ -105,6 +106,69 @@ it.skipIf(!database)('reads and writes repositories through DataSource on MySQL'
             .resolves.toMatchObject({ affectedRows: 1 });
         await expect(source.executeMutation({ kind: 'delete', entity: Generated, key: { id: saved.id } }))
             .resolves.toEqual({ rows: [], affectedRows: 0 });
+    } finally {
+        await source.close();
+    }
+});
+
+@Entity({ name: 'tyorm_mysql_concurrent' })
+class ConcurrentItem {
+    @PrimaryKey({ type: 'string' })
+    id!: string;
+
+    @Column({ type: 'string' })
+    label!: string;
+}
+
+it.skipIf(!database)('saves the same assigned key from two overlapping MySQL transactions', async () => {
+    if (!database) throw new Error('MYSQL_TEST_DATABASE is required.');
+    const { driver, compiler } = await mysqlProvider();
+    const password = process.env.MYSQL_TEST_PASSWORD;
+    const source = await DataSource.connect({
+        type: 'mysql', database, entities: [ConcurrentItem], pool: { max: 2 },
+        host: process.env.MYSQL_TEST_HOST ?? '127.0.0.1',
+        port: Number(process.env.MYSQL_TEST_PORT ?? 3306),
+        username: process.env.MYSQL_TEST_USER ?? 'root',
+        ...(password === undefined ? {} : { password }),
+        providers: { mysql: () => ({ driver, compiler }) }
+    });
+    const id = randomUUID();
+
+    try {
+        const connection = await driver.acquireConnection();
+        try {
+            await connection.execute({
+                sql: 'CREATE TABLE IF NOT EXISTS tyorm_mysql_concurrent (id VARCHAR(36) PRIMARY KEY, label VARCHAR(50) NOT NULL) ENGINE=InnoDB'
+            });
+        } finally {
+            await connection.release();
+        }
+
+        const options = { isolationLevel: 'READ_COMMITTED' } as const;
+        let competing: Promise<ConcurrentItem> | undefined;
+        try {
+            const first = await source.transaction(async scope => {
+                const inserted = await scope.getRepository(ConcurrentItem).save({ id, label: 'first' });
+                let signalStarted!: () => void;
+                const started = new Promise<void>(resolve => { signalStarted = resolve; });
+                competing = source.transaction(async other => {
+                    const write = other.getRepository(ConcurrentItem).save({ id, label: 'second' });
+                    signalStarted();
+                    return write;
+                }, options);
+                void competing.then(signalStarted, signalStarted);
+                await started;
+                return inserted;
+            }, options);
+
+            expect(first).toMatchObject({ id, label: 'first' });
+            await expect(competing).resolves.toMatchObject({ id, label: 'second' });
+            await expect(source.getRepository(ConcurrentItem).findById(id))
+                .resolves.toMatchObject({ id, label: 'second' });
+        } finally {
+            await competing?.catch(() => undefined);
+            await source.executeMutation({ kind: 'delete', entity: ConcurrentItem, key: { id } });
+        }
     } finally {
         await source.close();
     }
