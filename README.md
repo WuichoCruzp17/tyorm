@@ -375,6 +375,20 @@ const { rows: sales } = await db.executeFunction({
 
 Inside `db.transaction`, use `scope.executeFunction` to share the transaction's connection with repository operations. PostgreSQL resolves overloaded function signatures from the supplied arguments.
 
+### Call a PostgreSQL procedure with output parameters
+
+Use `executeProcedure` to call an existing procedure. Pass input values in order and use `{ mode: 'out' }` for each OUT position. For a signature such as `reporting.refresh_customer(IN customer_id integer, OUT updated_count integer)`, PostgreSQL returns one row with the output column `updated_count`.
+
+```ts
+const { rows: output } = await db.executeProcedure({
+    schema: 'reporting',
+    name: 'refresh_customer',
+    args: [1, { mode: 'out' }]
+});
+```
+
+Use `scope.executeProcedure` inside `db.transaction` to share its connection. A procedure that issues its own COMMIT or ROLLBACK must be called outside that transaction scope. See the [PostgreSQL CALL reference](https://www.postgresql.org/docs/17/sql-call.html).
+
 ## Driver extension points
 
 - `DriverProvider` creates a compatible driver and compiler for the engine selected by DataSource.

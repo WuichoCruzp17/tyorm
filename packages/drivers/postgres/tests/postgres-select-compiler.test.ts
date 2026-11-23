@@ -1300,5 +1300,19 @@ it('quotes routine identifiers and binds arguments separately', () => {
         });
     expect(compiler.compileFunction({ name: 'today' }))
         .toEqual({ sql: 'SELECT * FROM "today"()', parameters: [] });
-    expect(() => compiler.compileFunction({ name: ' ' })).toThrow('Invalid PostgreSQL function identifier');
+    expect(() => compiler.compileFunction({ name: ' ' })).toThrow('Invalid PostgreSQL routine identifier');
+});
+
+it('keeps OUT positions without consuming placeholders for bound inputs', () => {
+    const compiler = new PostgresSelectCompiler();
+    expect(compiler.compileProcedure({
+        schema: 'odd"schema',
+        name: 'get.total',
+        args: [4, { mode: 'out' }, "O'Brien", null, { mode: 'out' }]
+    })).toEqual({
+        sql: 'CALL "odd""schema"."get.total"($1, NULL, $2, $3, NULL)',
+        parameters: [4, "O'Brien", null]
+    });
+    expect(compiler.compileProcedure({ name: 'refresh' }))
+        .toEqual({ sql: 'CALL "refresh"()', parameters: [] });
 });

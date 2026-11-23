@@ -16,7 +16,14 @@ export interface FunctionCall {
     readonly args?: readonly QueryValue[];
 }
 
+export interface ProcedureCall {
+    readonly schema?: string;
+    readonly name: string;
+    readonly args?: readonly (QueryValue | { readonly mode: 'out' })[];
+}
+
 export interface SqlCompiler {
+    compileProcedure?(call: ProcedureCall): CompiledQuery;
     compileFunction?(call: FunctionCall): CompiledQuery;
     compileMutation?(query: ResolvedMutation): CompiledQuery;
 

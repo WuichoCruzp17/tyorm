@@ -2,6 +2,7 @@
 import type {
     CompiledQuery,
     FunctionCall,
+    ProcedureCall,
     SqlCompiler,
     SqlDialect,
     ResolvedSelectQuery,
@@ -101,17 +102,34 @@ export class PostgresSelectCompiler implements SqlCompiler {
 
 
     compileFunction(call: FunctionCall): CompiledQuery {
+        const context = new PostgresCompilationContext({}, this.dialect);
+        const name = this.routineName(call);
+        const args = Array.from(call.args ?? [], arg => context.bindValue(arg));
+        return { sql: `SELECT * FROM ${name}(${args.join(', ')})`, parameters: context.getParameters() };
+    }
+
+    compileProcedure(call: ProcedureCall): CompiledQuery {
+        const context = new PostgresCompilationContext({}, this.dialect);
+        const name = this.routineName(call);
+        const args = Array.from(call.args ?? [], arg => {
+            if (typeof arg === 'object' && arg !== null && 'mode' in arg) {
+                if (arg.mode !== 'out') throw new Error('Unsupported PostgreSQL procedure argument mode.');
+                return 'NULL';
+            }
+            return context.bindValue(arg);
+        });
+        return { sql: `CALL ${name}(${args.join(', ')})`, parameters: context.getParameters() };
+    }
+
+    private routineName({ name, schema }: Pick<FunctionCall, 'name' | 'schema'>): string {
         const quote = (identifier: string) => {
             if (typeof identifier !== 'string' || !identifier.trim() || identifier.includes('\0')) {
-                throw new Error('Invalid PostgreSQL function identifier.');
+                throw new Error('Invalid PostgreSQL routine identifier.');
             }
             return this.dialect.quoteIdentifier(identifier);
         };
-        const name = quote(call.name);
-        const qualified = call.schema === undefined ? name : `${quote(call.schema)}.${name}`;
-        const context = new PostgresCompilationContext({}, this.dialect);
-        const args = Array.from(call.args ?? [], arg => context.bindValue(arg));
-        return { sql: `SELECT * FROM ${qualified}(${args.join(', ')})`, parameters: context.getParameters() };
+        const quoted = quote(name);
+        return schema === undefined ? quoted : `${quote(schema)}.${quoted}`;
     }
 
     compileMutation(query: ResolvedMutation): CompiledQuery {

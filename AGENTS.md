@@ -390,7 +390,13 @@ Validación de extremo a extremo del 23 de noviembre de 2026. La integración pa
 
 `DataSource.executeFunction` y `TransactionScope.executeFunction` invocan funciones existentes y devuelven sus filas. El compilador PostgreSQL cita el esquema y nombre por separado y vincula los argumentos posicionales mediante parámetros. El contexto administrado conserva la misma conexión durante la transacción. Los proveedores sin ese compilador rechazan la operación.
 
-Validación del 23 de noviembre de 2026. Pasaron los tres builds y typecheck, el chequeo estricto de las pruebas modificadas y las suites con 313 pruebas de Core, 158 de PostgreSQL y 7 de SQLite. La integración en PostgreSQL local verificó el retorno de filas y la reversión de una escritura de la función. Quedan pendientes los procedimientos con CALL.
+Validación del 23 de noviembre de 2026. Pasaron los tres builds y typecheck, el chequeo estricto de las pruebas modificadas y las suites con 313 pruebas de Core, 158 de PostgreSQL y 7 de SQLite. La integración en PostgreSQL local verificó el retorno de filas y la reversión de una escritura de la función.
+
+### Procedimientos PostgreSQL con OUT
+
+`DataSource.executeProcedure` y `TransactionScope.executeProcedure` ejecutan CALL en PostgreSQL. Los valores de entrada se vinculan y cada marcador `{ mode: 'out' }` ocupa su posición con NULL. PostgreSQL devuelve las salidas nombradas en una fila de `QueryResult.rows`.
+
+Validación del 23 de noviembre de 2026. Pasaron los tres builds y typecheck, el chequeo estricto de las pruebas de PostgreSQL modificadas y 479 pruebas sin omisiones (313 de Core, 159 de PostgreSQL y 7 de SQLite). La integración local verificó dos salidas OUT y la reversión de una escritura dentro del alcance transaccional.
 
 ## 9. Comandos de validación
 
