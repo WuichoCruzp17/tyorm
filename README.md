@@ -73,6 +73,17 @@ node --env-file=packages/drivers/postgres/.env.test packages/core/examples/guide
 
 The guide creates and seeds temporary tables, prints compiled SQL and query results, and demonstrates commit and rollback. See the [guide files and chapter index](packages/core/examples/guide/README.md).
 
+### Run the PostgreSQL driver examples
+
+After building the packages, run these from the repository root with the same PostgreSQL environment variables:
+
+```sh
+node packages/drivers/postgres/examples/basic-connection.mjs
+node packages/drivers/postgres/examples/vector-search.mjs
+```
+
+The basic example uses a managed transaction and parameterized SQL. The vector example requires pgvector enabled in the target database and uses `DataSource` to find the nearest neighbors. Both examples create temporary tables.
+
 ## Usage examples
 
 The following snippets build on the same entity declarations and DataSource. They assume your PostgreSQL schema already contains `departments(department_id, name)` and `employees(employee_id, display_name, department_fk)`. The runnable guide creates its own sample schema using temporary tables.
