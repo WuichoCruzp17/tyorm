@@ -5,6 +5,7 @@ import {
 } from '@tyorm/core';
 import { postgresProvider } from '../src';
 import { sqliteProvider } from '../../sqlite/src';
+import { mysqlProvider } from '../../mysql/src';
 
 @Entity({ name: 'parity_groups' })
 class Group {
@@ -38,6 +39,8 @@ class Generated {
 }
 
 const password = process.env.PGPASSWORD;
+const mysqlDatabase = process.env.MYSQL_TEST_DATABASE;
+const mysqlPassword = process.env.MYSQL_TEST_PASSWORD;
 const providers = [
     {
         provider: postgresProvider,
@@ -56,6 +59,19 @@ const providers = [
         provider: sqliteProvider,
         config: { type: 'sqlite', database: ':memory:' },
         generatedKey: 'INTEGER PRIMARY KEY'
+    },
+    {
+        provider: mysqlProvider,
+        config: {
+            type: 'mysql',
+            database: mysqlDatabase ?? '',
+            host: process.env.MYSQL_TEST_HOST ?? '127.0.0.1',
+            port: Number(process.env.MYSQL_TEST_PORT ?? 3306),
+            username: process.env.MYSQL_TEST_USER ?? 'root',
+            ...(mysqlPassword === undefined ? {} : { password: mysqlPassword }),
+            pool: { max: 1 }
+        },
+        generatedKey: 'INTEGER AUTO_INCREMENT PRIMARY KEY'
     }
 ] satisfies readonly {
     provider: DriverProvider;
@@ -66,6 +82,8 @@ const providers = [
 const key = { groupId: 1, key: 'shared' };
 
 describe.each(providers)('DataSource contract ($config.type)', ({ provider, config, generatedKey }) => {
+    const contract = it.skipIf(config.type === 'mysql' && !mysqlDatabase);
+
     async function withSource(run: (source: DataSource) => Promise<void>): Promise<void> {
         const source = await DataSource.connect({
             ...config,
@@ -78,14 +96,15 @@ describe.each(providers)('DataSource contract ($config.type)', ({ provider, conf
                         await connect(options);
                         const connection = await driver.acquireConnection();
                         try {
+                            const temporary = config.type === 'mysql' ? 'TEMPORARY' : 'TEMP';
                             await connection.execute({
-                                sql: 'CREATE TEMP TABLE parity_groups (group_id INTEGER PRIMARY KEY, group_name TEXT NOT NULL)'
+                                sql: `CREATE ${temporary} TABLE parity_groups (group_id INTEGER PRIMARY KEY, group_name TEXT NOT NULL)`
                             });
                             await connection.execute({
-                                sql: 'CREATE TEMP TABLE parity_entries (owner_id INTEGER NOT NULL, entry_key TEXT NOT NULL, label TEXT, group_fk INTEGER GENERATED ALWAYS AS (owner_id) STORED, PRIMARY KEY (owner_id, entry_key))'
+                                sql: `CREATE ${temporary} TABLE parity_entries (owner_id INTEGER NOT NULL, entry_key VARCHAR(50) NOT NULL, label TEXT, group_fk INTEGER GENERATED ALWAYS AS (owner_id) STORED, PRIMARY KEY (owner_id, entry_key))`
                             });
                             await connection.execute({
-                                sql: `CREATE TEMP TABLE parity_generated (generated_id ${generatedKey})`
+                                sql: `CREATE ${temporary} TABLE parity_generated (generated_id ${generatedKey})`
                             });
                         } finally {
                             await connection.release();
@@ -107,7 +126,7 @@ describe.each(providers)('DataSource contract ($config.type)', ({ provider, conf
         }
     }
 
-    it('reads composite keys and paginates using stable key ordering', () => withSource(async source => {
+    contract('reads composite keys and paginates using stable key ordering', () => withSource(async source => {
         const entries = source.getRepository(Entry);
         await expect(entries.findById(key)).resolves.toMatchObject({ ...key, label: "O'Brien" });
         await expect(entries.findById({ ...key, groupId: 3 })).resolves.toBeNull();
@@ -117,7 +136,7 @@ describe.each(providers)('DataSource contract ($config.type)', ({ provider, conf
         await expect(entries.count()).resolves.toBe(2n);
     }));
 
-    it('resolves a relation with named filters, grouping and an aggregate', () => withSource(async source => {
+    contract('resolves a relation with named filters, grouping and an aggregate', () => withSource(async source => {
         const groupName = column('g', 'name');
         const total = count();
         const query: SelectQuery = {
@@ -137,7 +156,7 @@ describe.each(providers)('DataSource contract ($config.type)', ({ provider, conf
         ]);
     }));
 
-    it('returns generated keys and preserves the transaction outcome', () => withSource(async source => {
+    contract('returns generated keys and preserves the transaction outcome', () => withSource(async source => {
         const saved = await source.getRepository(Generated).save({});
         expect(saved).toBeInstanceOf(Generated);
         expect(saved.id).toBeGreaterThan(0);

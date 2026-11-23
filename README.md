@@ -7,11 +7,13 @@ TyORM is a TypeScript ORM inspired by Java Persistence API (JPA). It combines de
 | Database | TyORM driver | Connector used by the driver |
 | --- | --- | --- |
 | PostgreSQL | [`@tyorm/postgres`](packages/drivers/postgres) `0.1.0` | `pg` `^8.16.3` in the package manifest, with `8.23.1` resolved by the workspace lockfile. |
-| SQLite | [`@tyorm/sqlite`](packages/drivers/sqlite) `0.1.0` | Built-in `node:sqlite`. The package requires Node.js 22.16+ within the 22.x line, or Node.js 24+. |
+| MySQL | [`@tyorm/mysql`](packages/drivers/mysql) `0.1.0` | `mysql2` `^3.0.0`, with `3.24.6` resolved by the workspace lockfile. |
+| SQLite | [`@tyorm/mysql`](packages/drivers/mysql) | The MySQL provider, parameterized SELECT compilation, and pooled connections with transaction support. |
+| [`@tyorm/sqlite`](packages/drivers/sqlite) `0.1.0` | Built-in `node:sqlite`. The package requires Node.js 22.16+ within the 22.x line, or Node.js 24+. |
 
 The TyORM version identifies the adapter package. For PostgreSQL, `pg` has its own version. For SQLite, the SQLite engine version comes from the Node.js runtime and can be checked with `SELECT sqlite_version()`. The workspace validation on Node.js 26.13.0 used SQLite 3.54.0.
 
-Both providers support SELECT queries, repository reads and writes, and transactions through `DataSource`.
+PostgreSQL and SQLite support SELECT queries, repository reads and writes, and transactions through `DataSource`. MySQL also supports SELECT queries, repository reads and writes, and transactions.
 
 ## Packages and architecture
 
@@ -176,6 +178,10 @@ console.table(rows);
 ```
 
 Keep `db` open for the remaining examples and call `await db.close()` in your application's cleanup path.
+
+### Connect to MySQL
+
+Set `type: 'mysql'` and register the provider with `mysql: async () => (await import('@tyorm/mysql')).mysqlProvider()`. Set `database` to your existing MySQL database and supply the usual host, port, username, password and entity settings. The default MySQL port is 3306. Use `DataSource.executeMutation` for INSERT, UPDATE and DELETE, or `Repository.save` to persist an entity. Use transactional tables such as InnoDB. MySQL reads the affected row by primary key on the same connection and transaction. A generated key must use `AUTO_INCREMENT`.
 
 ### Connect to SQLite
 
@@ -379,5 +385,7 @@ pnpm --filter @tyorm/core test
 pnpm --filter @tyorm/sqlite test
 pnpm --filter @tyorm/postgres exec vitest run --mode test --exclude '**/*.integration.test.ts'
 ```
+
+Set `MYSQL_TEST_DATABASE` to a dedicated MySQL test database to include MySQL integration and cross-provider parity. The test user needs permission to create tables and temporary tables. Optional connection settings are `MYSQL_TEST_HOST`, `MYSQL_TEST_PORT`, `MYSQL_TEST_USER`, and `MYSQL_TEST_PASSWORD`.
 
 Run `pnpm --filter @tyorm/postgres test` against a dedicated test database to include the PostgreSQL integration suites. The driver's test configuration loads environment settings for Vitest's test mode. See [AGENTS.md](AGENTS.md) for the project roadmap and development conventions.
