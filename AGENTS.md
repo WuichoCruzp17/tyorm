@@ -374,9 +374,11 @@ Validación de distribución del 23 de noviembre de 2026. Se instalaron los tarb
 
 ### MySQL — proveedor y lectura inicial
 
-`@tyorm/mysql` usa `mysql2` (3.24.6 en el lockfile) y conserva la estructura de carpetas de los demás drivers. El proveedor se registra en DataSource con el tipo `mysql`. El primer bloque cubre pool, ejecución parametrizada, transacciones y compilación SELECT. Queda pendiente el contrato de escrituras y retorno de filas para `executeMutation` y `Repository.save`.
+`@tyorm/mysql` usa `mysql2` (3.24.6 en el lockfile) y conserva la estructura de carpetas de los demás drivers. El proveedor se registra en DataSource con el tipo `mysql`. El primer bloque cubre pool, ejecución parametrizada, transacciones y compilación SELECT. La entrega de escritura incorpora `executeMutation` y `Repository.save` con recuperación de filas por clave primaria. MySQL utiliza la misma conexión y transacción para la escritura y la lectura de la fila. Para claves generadas admite una columna AUTO_INCREMENT. Con claves asignadas intenta insertar y, ante un duplicado, actualiza únicamente si encuentra la clave primaria solicitada. La atomicidad requiere tablas transaccionales, como InnoDB.
 
 Pasaron el build, los cuatro typecheck y la regresión del monorepo. Las cinco pruebas de MySQL, incluida la integración de repositorios dentro de una transacción de solo lectura, pasaron en una instancia aislada de MySQL 8.2.0. La integración se activa con `MYSQL_TEST_DATABASE`. Puede configurarse con `MYSQL_TEST_HOST`, `MYSQL_TEST_PORT`, `MYSQL_TEST_USER` y `MYSQL_TEST_PASSWORD` y ejecutarse con `pnpm --filter @tyorm/mysql test`.
+
+Validación de escrituras. Pasaron los builds de Core y MySQL, los cuatro typecheck y 474 pruebas del monorepo. La integración contra MySQL 8.2.0 cubrió la clave generada, el retorno de filas, el guardado por clave compuesta, el conflicto en una clave única secundaria y el rollback.
 
 ## 9. Comandos de validación
 

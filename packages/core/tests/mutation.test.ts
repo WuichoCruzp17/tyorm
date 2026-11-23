@@ -24,6 +24,7 @@ describe('resolveMutation', () => {
             kind: 'insert', entity: Document, values: { tenant: 2, title: 'Draft' }
         })).toEqual({
             kind: 'insert', table: 'documents', schema: 'app',
+            primaryKeys: expect.arrayContaining([expect.objectContaining({ columnName: 'doc_id', generation: 'increment' })]),
             values: [
                 { column: 'tenant_id', value: 2 },
                 { column: 'doc_title', value: 'Draft' },

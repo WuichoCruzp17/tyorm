@@ -11,14 +11,35 @@ class Item {
     label!: string;
 }
 
+@Entity({ name: 'tyorm_mysql_generated' })
+class Generated {
+    @PrimaryKey({ type: 'integer', name: 'row_id', generation: 'increment' })
+    id!: number;
+
+    @Column({ type: 'string' })
+    label!: string;
+}
+
+@Entity({ name: 'tyorm_mysql_settings' })
+class Setting {
+    @PrimaryKey({ type: 'integer' })
+    tenant!: number;
+
+    @PrimaryKey({ type: 'string', name: 'setting_key' })
+    key!: string;
+
+    @Column({ type: 'string', name: 'setting_value' })
+    value!: string;
+}
+
 const database = process.env.MYSQL_TEST_DATABASE;
 
-it.skipIf(!database)('reads repositories through DataSource on MySQL', async () => {
+it.skipIf(!database)('reads and writes repositories through DataSource on MySQL', async () => {
     if (!database) throw new Error('MYSQL_TEST_DATABASE is required.');
     const { driver, compiler } = await mysqlProvider();
     const password = process.env.MYSQL_TEST_PASSWORD;
     const source = await DataSource.connect({
-        type: 'mysql', database, entities: [Item], pool: { max: 1 },
+        type: 'mysql', database, entities: [Item, Generated, Setting], pool: { max: 1 },
         host: process.env.MYSQL_TEST_HOST ?? '127.0.0.1',
         port: Number(process.env.MYSQL_TEST_PORT ?? 3306),
         username: process.env.MYSQL_TEST_USER ?? 'root',
@@ -36,6 +57,12 @@ it.skipIf(!database)('reads repositories through DataSource on MySQL', async () 
                 sql: 'INSERT INTO tyorm_mysql_items VALUES (?, ?), (?, ?)',
                 parameters: [1, "O'Brien", 2, 'Second']
             });
+            await connection.execute({
+                sql: 'CREATE TEMPORARY TABLE tyorm_mysql_generated (row_id INT AUTO_INCREMENT PRIMARY KEY, label VARCHAR(50) NOT NULL)'
+            });
+            await connection.execute({
+                sql: 'CREATE TEMPORARY TABLE tyorm_mysql_settings (tenant INT NOT NULL, setting_key VARCHAR(50) NOT NULL, setting_value VARCHAR(50) NOT NULL UNIQUE, PRIMARY KEY (tenant, setting_key))'
+            });
         } finally {
             await connection.release();
         }
@@ -47,6 +74,37 @@ it.skipIf(!database)('reads repositories through DataSource on MySQL', async () 
         await expect(source.transaction(scope => scope.getRepository(Item).existsById(2), {
             isolationLevel: 'READ_COMMITTED', readOnly: true
         })).resolves.toBe(true);
+
+        const generated = source.getRepository(Generated);
+        const saved = await generated.save({ label: "O'Brien" });
+        expect(saved).toBeInstanceOf(Generated);
+        expect(saved.id).toBeGreaterThan(0);
+        const { rows, affectedRows } = await source.executeMutation({
+            kind: 'update', entity: Generated, key: { id: saved.id }, values: { label: 'Updated' }
+        });
+        expect({ rows, affectedRows }).toEqual({ rows: [{ id: saved.id, label: 'Updated' }], affectedRows: 1 });
+
+        const settings = source.getRepository(Setting);
+        const key = { tenant: 1, key: 'locale' };
+        await settings.save({ ...key, value: 'es' });
+        await expect(settings.save({ ...key, value: 'en' })).resolves.toMatchObject({ ...key, value: 'en' });
+        await expect(settings.save({ ...key, tenant: 2, value: 'en' })).rejects.toMatchObject({ code: 'ER_DUP_ENTRY' });
+        await expect(settings.findById({ ...key, tenant: 2 })).resolves.toBeNull();
+
+        const abort = new Error('Abort');
+        await expect(source.transaction(async scope => {
+            await scope.getRepository(Setting).save({ ...key, value: 'fr' });
+            await expect(scope.executeMutation({
+                kind: 'delete', entity: Generated, key: { id: saved.id }
+            })).resolves.toMatchObject({ rows: [{ id: saved.id, label: 'Updated' }], affectedRows: 1 });
+            throw abort;
+        })).rejects.toBe(abort);
+        await expect(settings.findById(key)).resolves.toMatchObject({ value: 'en' });
+        await expect(generated.findById(saved.id)).resolves.toMatchObject({ label: 'Updated' });
+        await expect(source.executeMutation({ kind: 'delete', entity: Generated, key: { id: saved.id } }))
+            .resolves.toMatchObject({ affectedRows: 1 });
+        await expect(source.executeMutation({ kind: 'delete', entity: Generated, key: { id: saved.id } }))
+            .resolves.toEqual({ rows: [], affectedRows: 0 });
     } finally {
         await source.close();
     }

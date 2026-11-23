@@ -13,7 +13,7 @@ TyORM is a TypeScript ORM inspired by Java Persistence API (JPA). It combines de
 
 The TyORM version identifies the adapter package. For PostgreSQL, `pg` has its own version. For SQLite, the SQLite engine version comes from the Node.js runtime and can be checked with `SELECT sqlite_version()`. The workspace validation on Node.js 26.13.0 used SQLite 3.54.0.
 
-PostgreSQL and SQLite support SELECT queries, repository reads and writes, and transactions through `DataSource`. MySQL supports SELECT queries and repository reads, including within transactions.
+PostgreSQL and SQLite support SELECT queries, repository reads and writes, and transactions through `DataSource`. MySQL also supports SELECT queries, repository reads and writes, and transactions.
 
 ## Packages and architecture
 
@@ -170,7 +170,7 @@ Keep `db` open for the remaining examples and call `await db.close()` in your ap
 
 ### Connect to MySQL
 
-Set `type: 'mysql'` and register the provider with `mysql: async () => (await import('@tyorm/mysql')).mysqlProvider()`. Set `database` to your existing MySQL database and supply the usual host, port, username, password and entity settings. The default MySQL port is 3306. The initial provider supports `DataSource.execute` for SELECT and the repository read methods. Explicit mutations and `Repository.save` are pending for MySQL.
+Set `type: 'mysql'` and register the provider with `mysql: async () => (await import('@tyorm/mysql')).mysqlProvider()`. Set `database` to your existing MySQL database and supply the usual host, port, username, password and entity settings. The default MySQL port is 3306. Use `DataSource.executeMutation` for INSERT, UPDATE and DELETE, or `Repository.save` to persist an entity. Use transactional tables such as InnoDB. MySQL reads the affected row by primary key on the same connection and transaction. A generated key must use `AUTO_INCREMENT`.
 
 ### Connect to SQLite
 

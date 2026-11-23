@@ -1,6 +1,6 @@
 import type {
     CompiledQuery, QueryExpression, QueryPredicate, ResolvedJoinColumn, ResolvedJoinCondition,
-    ResolvedSelectQuery, SqlCompiler
+    ResolvedMutation, ResolvedSelectQuery, SqlCompiler
 } from '@tyorm/core';
 
 const comparison = { eq: '=', ne: '<>', gt: '>', gte: '>=', lt: '<', lte: '<=', like: 'LIKE', 'not-like': 'NOT LIKE' };
@@ -27,7 +27,75 @@ function joinCondition({ left, right }: ResolvedJoinCondition): string {
     return `${column(left)} = ${column(right)}`;
 }
 
+export class MySQLMutation implements CompiledQuery {
+    constructor(
+        readonly kind: ResolvedMutation['kind'],
+        readonly sql: string,
+        readonly parameters: readonly unknown[],
+        readonly read: CompiledQuery,
+        readonly updateOnConflict?: CompiledQuery
+    ) {}
+}
+
 export class MySQLSelectCompiler implements SqlCompiler {
+    compileMutation(query: ResolvedMutation): CompiledQuery {
+        const target = qualifiedTable(query.table, query.schema);
+        const returning = query.returning.map(({ column, alias }) => `${quote(column)} AS ${quote(alias)}`).join(', ');
+        if (!returning) throw new Error('MySQL mutations require returned columns.');
+
+        const assignment = ({ column }: { readonly column: string }) => `${quote(column)} = ?`;
+        const values = (bindings: readonly { readonly value: unknown }[]) => bindings.map(binding => binding.value);
+        const update = (assignments: readonly { readonly column: string; readonly value: unknown }[], where: string, key: readonly unknown[]) => ({
+            sql: `UPDATE ${target} SET ${assignments.map(assignment).join(', ')} WHERE ${where}`,
+            parameters: [...values(assignments), ...key]
+        });
+        const read = (where: string, parameters: readonly unknown[]): CompiledQuery => ({
+            sql: `SELECT ${returning} FROM ${target} WHERE ${where} FOR UPDATE`, parameters
+        });
+
+        if (query.kind === 'delete' || query.kind === 'update') {
+            if (query.key.length === 0) throw new Error('MySQL mutations require a primary key.');
+            const where = query.key.map(assignment).join(' AND ');
+            const key = values(query.key);
+            if (query.kind === 'delete') {
+                return new MySQLMutation('delete', `DELETE FROM ${target} WHERE ${where}`, key, read(where, key));
+            }
+            if (query.values.length === 0) throw new Error('UPDATE requires assignments.');
+            const statement = update(query.values, where, key);
+            return new MySQLMutation('update', statement.sql, statement.parameters, read(where, key));
+        }
+
+        const columns = query.values.map(binding => quote(binding.column)).join(', ');
+        const placeholders = query.values.map(() => '?').join(', ');
+        const sql = `INSERT INTO ${target} (${columns}) VALUES (${placeholders})`;
+        const byColumn = new Map(query.values.map(binding => [binding.column, binding]));
+        if (query.kind === 'upsert') {
+            const key = query.conflictColumns.map(column => {
+                const binding = byColumn.get(column);
+                if (!binding) throw new Error('UPSERT requires all primary-key values.');
+                return binding.value;
+            });
+            if (key.length === 0) throw new Error('UPSERT requires a primary key.');
+            const where = query.conflictColumns.map(column => assignment({ column })).join(' AND ');
+            const conflict = query.assignments.length > 0 ? update(query.assignments, where, key) : undefined;
+            return new MySQLMutation('upsert', sql, values(query.values), read(where, key), conflict);
+        }
+
+        const keys = query.primaryKeys ?? [];
+        if (keys.length === 0) throw new Error('MySQL INSERT requires primary-key metadata to return the row.');
+        const generated = keys.filter(key => !byColumn.has(key.columnName));
+        if (generated.length > 1 || generated.some(key => key.generation !== 'increment')) {
+            throw new Error('MySQL INSERT requires assigned keys or one AUTO_INCREMENT key.');
+        }
+        const key: unknown[] = [];
+        const where = keys.map(({ columnName }) => {
+            const binding = byColumn.get(columnName);
+            if (!binding) return `${quote(columnName)} = LAST_INSERT_ID()`;
+            key.push(binding.value);
+            return assignment({ column: columnName });
+        }).join(' AND ');
+        return new MySQLMutation('insert', sql, values(query.values), read(where, key));
+    }
     compile(resolved: ResolvedSelectQuery, parameters: Readonly<Record<string, unknown>> = {}): CompiledQuery {
         const values: unknown[] = [];
         const bind = (value: unknown) => {
