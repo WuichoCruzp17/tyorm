@@ -23,7 +23,8 @@ export class SQLiteConnection implements DatabaseConnection {
             const rows = statement.all(...parameters).map(row => Object.fromEntries(
                 Object.entries(row).map(([key, value]) => [key, normalizeInteger(value)])
             ));
-            return { rows: rows as T[], affectedRows: null };
+            const affectedRows = /^\s*(?:INSERT|UPDATE|DELETE)\b/i.test(query.sql) ? rows.length : null;
+            return { rows: rows as T[], affectedRows };
         }
         const { changes } = statement.run(...parameters);
         return { rows: [], affectedRows: Number(changes) };

@@ -1,6 +1,6 @@
 import type {
     CompiledQuery, QueryExpression, QueryPredicate, ResolvedJoinColumn, ResolvedJoinCondition,
-    ResolvedSelectQuery, SqlCompiler
+    ResolvedMutation, ResolvedSelectQuery, SqlCompiler
 } from '@tyorm/core';
 
 const comparison = { eq: '=', ne: '<>', gt: '>', gte: '>=', lt: '<', lte: '<=', like: 'LIKE', 'not-like': 'NOT LIKE' };
@@ -11,8 +11,12 @@ function quote(identifier: string): string {
     return `"${identifier.replaceAll('"', '""')}"`;
 }
 
+function qualifiedTable(name: string, schema?: string): string {
+    return schema === undefined ? quote(name) : `${quote(schema)}.${quote(name)}`;
+}
+
 function table(name: string, alias: string, schema?: string): string {
-    return `${schema === undefined ? '' : quote(schema) + '.'}${quote(name)} AS ${quote(alias)}`;
+    return `${qualifiedTable(name, schema)} AS ${quote(alias)}`;
 }
 
 function column({ tableAlias, columnName }: ResolvedJoinColumn): string {
@@ -103,5 +107,53 @@ export class SQLiteSelectCompiler implements SqlCompiler {
         else if (query.offset !== undefined) parts.push('LIMIT -1');
         if (query.offset !== undefined) parts.push(`OFFSET ${bind(query.offset)}`);
         return { sql: parts.join(' '), parameters: values };
+    }
+
+    compileMutation(query: ResolvedMutation): CompiledQuery {
+        const target = qualifiedTable(query.table, query.schema);
+        const parameters: unknown[] = [];
+        const bind = (value: unknown) => {
+            parameters.push(value);
+            return '?';
+        };
+        const equality = ({ column, value }: { readonly column: string; readonly value: unknown }) =>
+            `${quote(column)} = ${bind(value)}`;
+
+        let sql: string;
+        switch (query.kind) {
+            case 'insert':
+            case 'upsert': {
+                const columns = query.values.map(({ column }) => quote(column));
+                const placeholders = query.values.map(({ value }) => bind(value));
+                sql = columns.length === 0
+                    ? `INSERT INTO ${target} DEFAULT VALUES`
+                    : `INSERT INTO ${target} (${columns.join(', ')}) VALUES (${placeholders.join(', ')})`;
+                if (query.kind === 'upsert') {
+                    const [first] = query.conflictColumns;
+                    if (first === undefined || columns.length === 0) {
+                        throw new Error('UPSERT requires insert values and a primary key.');
+                    }
+                    const assignments = query.assignments.length > 0
+                        ? query.assignments.map(equality).join(', ')
+                        : `${quote(first)} = excluded.${quote(first)}`;
+                    sql += ` ON CONFLICT (${query.conflictColumns.map(quote).join(', ')}) DO UPDATE SET ${assignments}`;
+                }
+                break;
+            }
+            case 'update':
+                if (query.values.length === 0 || query.key.length === 0) {
+                    throw new Error('UPDATE requires assignments and a primary key.');
+                }
+                sql = `UPDATE ${target} SET ${query.values.map(equality).join(', ')} WHERE ${query.key.map(equality).join(' AND ')}`;
+                break;
+            case 'delete':
+                if (query.key.length === 0) throw new Error('DELETE requires a primary key.');
+                sql = `DELETE FROM ${target} WHERE ${query.key.map(equality).join(' AND ')}`;
+                break;
+        }
+
+        const returning = query.returning.map(({ column, alias }) => `${quote(column)} AS ${quote(alias)}`);
+        if (returning.length > 0) sql += ` RETURNING ${returning.join(', ')}`;
+        return { sql, parameters };
     }
 }
