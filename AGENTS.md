@@ -372,6 +372,12 @@ Validación del 23 de noviembre de 2026. Pasaron los tres typecheck, el chequeo 
 
 Validación de distribución del 23 de noviembre de 2026. Se instalaron los tarballs de Core y SQLite con npm sin acceso a la red, en una aplicación temporal externa al monorepo. La aplicación compiló con TypeScript, cargó `@tyorm/core/register` y el proveedor SQLite por importación dinámica, guardó una entidad con clave generada y recuperó el registro tras cerrar y reabrir el archivo. El build de Core incluye ahora la entrada pública `register`. El workspace pasó los tres builds y typecheck, el chequeo estricto de la prueba modificada y 468 pruebas en total, incluidas 7 del paquete SQLite y las seis de paridad.
 
+### MySQL — proveedor y lectura inicial
+
+`@tyorm/mysql` usa `mysql2` (3.24.6 en el lockfile) y conserva la estructura de carpetas de los demás drivers. El proveedor se registra en DataSource con el tipo `mysql`. El primer bloque cubre pool, ejecución parametrizada, transacciones y compilación SELECT. Queda pendiente el contrato de escrituras y retorno de filas para `executeMutation` y `Repository.save`.
+
+Pasaron el build, los cuatro typecheck y la regresión del monorepo. Las cinco pruebas de MySQL, incluida la integración de repositorios dentro de una transacción de solo lectura, pasaron en una instancia aislada de MySQL 8.2.0. La integración se activa con `MYSQL_TEST_DATABASE`. Puede configurarse con `MYSQL_TEST_HOST`, `MYSQL_TEST_PORT`, `MYSQL_TEST_USER` y `MYSQL_TEST_PASSWORD` y ejecutarse con `pnpm --filter @tyorm/mysql test`.
+
 ## 9. Comandos de validación
 
 Ejecutar desde la raíz del monorepo, confirmando que los scripts existen:
