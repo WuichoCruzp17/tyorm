@@ -11,7 +11,7 @@ function quote(identifier: string): string {
     return '`' + identifier.replaceAll('`', '``') + '`';
 }
 
-function qualifiedTable(name: string, schema?: string): string {
+export function qualifiedTable(name: string, schema?: string): string {
     return schema === undefined ? quote(name) : `${quote(schema)}.${quote(name)}`;
 }
 

@@ -1,5 +1,5 @@
 import { createPool, type Pool } from 'mysql2/promise';
-import type { DatabaseConnection, DatabaseDriver, DriverConfig } from '@tyorm/core';
+import type { DatabaseDriver, DriverConfig } from '@tyorm/core';
 import { MySQLConnection } from '../connection/mysql-connection';
 
 export class MySQLDriver implements DatabaseDriver {
@@ -29,7 +29,7 @@ export class MySQLDriver implements DatabaseDriver {
         }
     }
 
-    async acquireConnection(): Promise<DatabaseConnection> {
+    async acquireConnection(): Promise<MySQLConnection> {
         if (!this.pool || this.closing) throw new Error('MySQL driver is disconnected or closing.');
         return new MySQLConnection(await this.pool.getConnection());
     }

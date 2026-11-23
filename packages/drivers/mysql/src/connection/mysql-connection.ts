@@ -1,7 +1,12 @@
-import type { PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
+import type { PoolConnection, ProcedureCallPacket, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import type { DatabaseConnection, Query, QueryResult, TransactionOptions } from '@tyorm/core';
 
-import { MySQLMutation } from '../query/compiler/mysql-select-compiler';
+import { MySQLMutation, qualifiedTable } from '../query/compiler/mysql-select-compiler';
+
+export interface MySQLProcedureResult {
+    readonly resultSets: readonly (readonly Record<string, unknown>[])[];
+    readonly affectedRows: number;
+}
 
 const isolation = {
     READ_UNCOMMITTED: 'READ UNCOMMITTED',
@@ -24,6 +29,30 @@ export class MySQLConnection implements DatabaseConnection {
         return this.enqueue(async () => {
             this.assertUsable();
             return query instanceof MySQLMutation ? this.executeMutation<T>(query) : this.executeStatement<T>(query);
+        });
+    }
+
+    callProcedure(
+        name: string,
+        parameters: readonly unknown[] = [],
+        schema?: string
+    ): Promise<MySQLProcedureResult> {
+        return this.enqueue(async () => {
+            this.assertUsable();
+            const placeholders = parameters.map(() => '?').join(', ');
+            const sql = `CALL ${qualifiedTable(name, schema)}(${placeholders})`;
+            const [result] = await this.client.execute<ProcedureCallPacket | RowDataPacket[][]>(
+                sql, parameters.map(toMySQLValue)
+            );
+            if (!Array.isArray(result)) return { resultSets: [], affectedRows: result.affectedRows };
+
+            const status = result.at(-1);
+            if (!status || Array.isArray(status)) throw new Error('Missing MySQL procedure status.');
+            const resultSets: RowDataPacket[][] = [];
+            for (const item of result) {
+                if (Array.isArray(item)) resultSets.push(item);
+            }
+            return { resultSets, affectedRows: status.affectedRows };
         });
     }
 
