@@ -1,6 +1,17 @@
 # TyORM
 
-TyORM is a TypeScript ORM inspired by Java Persistence API (JPA). It combines decorator-based entity metadata with an explicit query API for building parameterized SQL. Use the PostgreSQL provider to connect through `DataSource`, query registered entities, and write through repositories. Database-independent query semantics, relationship resolution, projections, and transaction orchestration live in Core.
+TyORM is a TypeScript ORM inspired by Java Persistence API (JPA). It combines decorator-based entity metadata with an explicit query API for building parameterized SQL. Use `DataSource` with the PostgreSQL or SQLite provider to query registered entities and write through repositories. Database-independent query semantics, relationship resolution, projections, and transaction orchestration live in Core.
+
+## Supported databases
+
+| Database | TyORM driver | Connector used by the driver |
+| --- | --- | --- |
+| PostgreSQL | [`@tyorm/postgres`](packages/drivers/postgres) `0.1.0` | `pg` `^8.16.3` in the package manifest, with `8.23.1` resolved by the workspace lockfile. |
+| SQLite | [`@tyorm/sqlite`](packages/drivers/sqlite) `0.1.0` | Built-in `node:sqlite`. The package requires Node.js 22.16+ within the 22.x line, or Node.js 24+. |
+
+The TyORM version identifies the adapter package. For PostgreSQL, `pg` has its own version. For SQLite, the SQLite engine version comes from the Node.js runtime and can be checked with `SELECT sqlite_version()`. The workspace validation on Node.js 26.13.0 used SQLite 3.54.0.
+
+Both providers support SELECT queries, repository reads and writes, and transactions through `DataSource`.
 
 ## Packages and architecture
 
@@ -8,6 +19,7 @@ TyORM is a TypeScript ORM inspired by Java Persistence API (JPA). It combines de
 | --- | --- |
 | [`@tyorm/core`](packages/core) | Entity and relation decorators, metadata registry and validation, query AST and builders, semantic resolution, projection APIs, DataSource, repositories, transaction management, and driver contracts. |
 | [`@tyorm/postgres`](packages/drivers/postgres) | The PostgreSQL provider, SELECT and mutation compilation, connection pooling through `pg`, and PostgreSQL transaction and error handling. |
+| [`@tyorm/sqlite`](packages/drivers/sqlite) | The SQLite provider, SELECT and mutation compilation, and transaction management over a single `node:sqlite` connection. |
 
 ### Metadata and relationships
 
@@ -23,7 +35,7 @@ flowchart LR
     B --> C["Resolve entities, aliases, columns, and joins"]
     M["OrmMetadataModel"] --> C
     C --> D["ResolvedSelectQuery"]
-    D --> E["PostgresSelectCompiler"]
+    D --> E["Provider SQL compiler"]
     E --> F["SQL and bound parameters"]
     F --> G["DatabaseConnection.execute"]
     G --> H["Rows or projected results"]
@@ -32,7 +44,7 @@ flowchart LR
 1. **Build.** A `SelectQuery` describes the source entity, selected expressions, joins, filters, grouping, ordering, and pagination. Builders such as `column`, `eq`, and `param` create expression and predicate nodes.
 2. **Validate and normalize.** Core checks the AST shape, aliases, clause rules, and pagination values. It then creates a frozen snapshot.
 3. **Resolve.** `QuerySemanticResolver` looks up entities and properties, matches them to physical columns, and produces a direct or junction join plan from relation metadata.
-4. **Compile and execute.** PostgreSQL renders SQL from the resolved query. The dialect quotes identifiers and the compilation context binds values as `$1`, `$2`, and so on. The connection executes the compiled SQL and returns the driver's rows.
+4. **Compile and execute.** The selected provider renders SQL from the resolved query, quotes identifiers, and binds values. PostgreSQL uses numbered placeholders such as `$1`, while SQLite uses positional `?` placeholders. The connection executes the compiled SQL and returns the driver's rows.
 
 The current SELECT pipeline supports aliases, `DISTINCT`, `WHERE`, direct and junction `INNER JOIN` and `LEFT JOIN`, `GROUP BY`, `HAVING`, `ORDER BY`, `LIMIT`, and `OFFSET`. Aggregate expressions include `COUNT(*)`, `COUNT(column)`, `SUM`, `AVG`, `MIN`, and `MAX`.
 
@@ -153,6 +165,30 @@ console.table(rows);
 ```
 
 Keep `db` open for the remaining examples and call `await db.close()` in your application's cleanup path.
+
+### Connect to SQLite
+
+Configure `type: 'sqlite'` and register `sqliteProvider`. The `database` option accepts a file path for persistent storage or `:memory:` for a database that lasts until the data source closes. This example uses the `Department` entity defined above and assumes that the file already has a matching `departments` table.
+
+```ts
+const sqlite = await DataSource.connect({
+    type: 'sqlite',
+    database: './app.sqlite',
+    entities: [Department],
+    providers: { sqlite: async () => (await import('@tyorm/sqlite')).sqliteProvider() }
+});
+
+try {
+    const department = await sqlite.transaction(scope =>
+        scope.getRepository(Department).save({ id: 1, name: 'Research' })
+    );
+    console.log(department.name);
+} finally {
+    await sqlite.close();
+}
+```
+
+SQLite serializes access to a single connection per data source. Transactions support the default SQLite isolation or `SERIALIZABLE`. A transaction configured with `readOnly: true` is rejected.
 
 ### Group and filter results
 
@@ -295,13 +331,14 @@ const savedDepartment = await db.transaction(async scope => {
 - `SqlCompiler` translates a resolved SELECT into a `CompiledQuery` with SQL and ordered parameters. Providers that support writes also implement `compileMutation`.
 - `SqlDialect` defines identifier quoting and parameter placeholders.
 
-A second database backend can implement these contracts while reusing the metadata model, query builders, semantic resolver, projections, and transaction manager. See the [Core contracts](packages/core/src/drivers/contracts), [compiler contracts](packages/core/src/query/compiler), and [PostgreSQL implementation](packages/drivers/postgres/src).
+A second database backend can implement these contracts while reusing the metadata model, query builders, semantic resolver, projections, and transaction manager. See the [Core contracts](packages/core/src/drivers/contracts), [compiler contracts](packages/core/src/query/compiler), and the [PostgreSQL](packages/drivers/postgres/src) and [SQLite](packages/drivers/sqlite/src) implementations.
 
 ## Development
 
 ```sh
 pnpm typecheck
 pnpm --filter @tyorm/core test
+pnpm --filter @tyorm/sqlite test
 pnpm --filter @tyorm/postgres exec vitest run --mode test --exclude '**/*.integration.test.ts'
 ```
 

@@ -36,6 +36,16 @@ importers:
         specifier: ^8.3.6
         version: 8.3.6(@types/node@26.6.6)(esbuild@0.28.2)
 
+  packages/drivers/sqlite:
+    dependencies:
+      '@tyorm/core':
+        specifier: workspace:*
+        version: link:../../core
+    devDependencies:
+      '@types/node':
+        specifier: 26.6.6
+        version: 26.6.6
+
 packages:
 
   '@esbuild/aix-ppc64@0.27.7':
