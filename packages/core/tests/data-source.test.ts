@@ -55,6 +55,18 @@ function fixture() {
 }
 
 describe('DataSource', () => {
+    it('rejects function calls before acquiring a connection if the compiler lacks support', async () => {
+        const { options, driver } = fixture();
+        const source = await DataSource.connect(options);
+        try {
+            await expect(source.executeFunction({ name: 'today' }))
+                .rejects.toThrow('The selected driver does not support SQL function calls.');
+            expect(driver.acquireConnection).not.toHaveBeenCalled();
+        } finally {
+            await source.close();
+        }
+    });
+
     it('loads only the selected provider and releases the connection after executing', async () => {
         const { options, selected, other, driver, compile, compiled, connection, execute } = fixture();
         const source = await DataSource.connect(options);

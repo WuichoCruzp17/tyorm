@@ -367,6 +367,34 @@ async function findNearest(
 
 `vectorDistance` supports Euclidean distance (`'l2'`, the default) and cosine distance (`'cosine'`). The driver binds the query vector as a parameter. The embedding length must match the column dimension. The SQLite provider rejects vector distance expressions.
 
+### Call a PostgreSQL function
+
+Use `executeFunction` to call an existing PostgreSQL function and receive its rows. Pass the schema and function name separately, and supply positional arguments as values.
+
+```ts
+const { rows: sales } = await db.executeFunction({
+    schema: 'reporting',
+    name: 'sales_by_customer',
+    args: [1]
+});
+```
+
+Inside `db.transaction`, use `scope.executeFunction` to share the transaction's connection with repository operations. PostgreSQL resolves overloaded function signatures from the supplied arguments.
+
+### Call a PostgreSQL procedure with output parameters
+
+Use `executeProcedure` to call an existing procedure. Pass input values in order. Use `{ mode: 'out' }` for each OUT position and `{ mode: 'inout', value: initialValue }` for each INOUT position. TyORM binds the INOUT value, and the returned row contains its updated value under the parameter name. For a signature such as `reporting.refresh_customer(IN customer_id integer, OUT updated_count integer)`, PostgreSQL returns one row with the output column `updated_count`.
+
+```ts
+const { rows: output } = await db.executeProcedure({
+    schema: 'reporting',
+    name: 'refresh_customer',
+    args: [1, { mode: 'out' }]
+});
+```
+
+Use `scope.executeProcedure` inside `db.transaction` to share its connection. A procedure that issues its own COMMIT or ROLLBACK must be called outside that transaction scope. See the [PostgreSQL CALL reference](https://www.postgresql.org/docs/17/sql-call.html).
+
 ## Driver extension points
 
 - `DriverProvider` creates a compatible driver and compiler for the engine selected by DataSource.
