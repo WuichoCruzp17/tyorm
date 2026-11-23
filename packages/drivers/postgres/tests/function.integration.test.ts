@@ -32,12 +32,13 @@ it('returns rows from functions and procedures and rolls back their writes', asy
             });
             await connection.execute({
                 sql: `
-                    CREATE PROCEDURE pg_temp.add_procedure_entry(IN input text, OUT stored text, OUT label_size integer)
+                    CREATE PROCEDURE pg_temp.add_procedure_entry(IN input text, OUT stored text, OUT label_size integer, INOUT message text)
                     LANGUAGE plpgsql AS $$
                     BEGIN
                         INSERT INTO function_entries (label) VALUES (input);
                         stored := input;
                         label_size := length(input);
+                        message := message || ': ' || input;
                     END;
                     $$
                 `
@@ -51,17 +52,17 @@ it('returns rows from functions and procedures and rolls back their writes', asy
 
         const procedure = (label: string) => ({
             schema: 'pg_temp', name: 'add_procedure_entry',
-            args: [label, { mode: 'out' }, { mode: 'out' }] as const
+            args: [label, { mode: 'out' }, { mode: 'out' }, { mode: 'inout', value: "O'Brien" }] as const
         });
         await expect(source.executeProcedure(procedure('procedure commit')))
-            .resolves.toMatchObject({ rows: [{ stored: 'procedure commit', label_size: 16 }] });
+            .resolves.toMatchObject({ rows: [{ stored: 'procedure commit', label_size: 16, message: "O'Brien: procedure commit" }] });
 
         const abort = new Error('Abort function transaction');
         await expect(source.transaction(async scope => {
             await expect(scope.executeFunction({ ...call, args: ['rolled back'] }))
                 .resolves.toMatchObject({ rows: [{ label: 'rolled back' }] });
             await expect(scope.executeProcedure(procedure('procedure rollback')))
-                .resolves.toMatchObject({ rows: [{ stored: 'procedure rollback', label_size: 18 }] });
+                .resolves.toMatchObject({ rows: [{ stored: 'procedure rollback', label_size: 18, message: "O'Brien: procedure rollback" }] });
             throw abort;
         })).rejects.toBe(abort);
 

@@ -19,7 +19,11 @@ export interface FunctionCall {
 export interface ProcedureCall {
     readonly schema?: string;
     readonly name: string;
-    readonly args?: readonly (QueryValue | { readonly mode: 'out' })[];
+    readonly args?: readonly (
+        | QueryValue
+        | { readonly mode: 'out' }
+        | { readonly mode: 'inout'; readonly value: QueryValue }
+    )[];
 }
 
 export interface SqlCompiler {

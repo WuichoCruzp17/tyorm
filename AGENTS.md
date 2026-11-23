@@ -392,11 +392,13 @@ Validación de extremo a extremo del 23 de noviembre de 2026. La integración pa
 
 Validación del 23 de noviembre de 2026. Pasaron los tres builds y typecheck, el chequeo estricto de las pruebas modificadas y las suites con 313 pruebas de Core, 158 de PostgreSQL y 7 de SQLite. La integración en PostgreSQL local verificó el retorno de filas y la reversión de una escritura de la función.
 
-### Procedimientos PostgreSQL con OUT
+### Procedimientos PostgreSQL con OUT e INOUT
 
 `DataSource.executeProcedure` y `TransactionScope.executeProcedure` ejecutan CALL en PostgreSQL. Los valores de entrada se vinculan y cada marcador `{ mode: 'out' }` ocupa su posición con NULL. PostgreSQL devuelve las salidas nombradas en una fila de `QueryResult.rows`.
 
 Validación del 23 de noviembre de 2026. Pasaron los tres builds y typecheck, el chequeo estricto de las pruebas de PostgreSQL modificadas y 479 pruebas sin omisiones (313 de Core, 159 de PostgreSQL y 7 de SQLite). La integración local verificó dos salidas OUT y la reversión de una escritura dentro del alcance transaccional.
+
+La variante `{ mode: 'inout', value }` vincula el valor inicial y devuelve el actualizado en `rows`. La integración local verificó el valor actualizado junto a dos salidas OUT, en llamadas directas y dentro de una transacción con rollback. Pasaron el build, el typecheck, el chequeo estricto de las pruebas modificadas y las 479 pruebas del workspace.
 
 ## 9. Comandos de validación
 

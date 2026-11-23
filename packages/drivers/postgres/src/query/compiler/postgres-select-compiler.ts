@@ -113,8 +113,9 @@ export class PostgresSelectCompiler implements SqlCompiler {
         const name = this.routineName(call);
         const args = Array.from(call.args ?? [], arg => {
             if (typeof arg === 'object' && arg !== null && 'mode' in arg) {
-                if (arg.mode !== 'out') throw new Error('Unsupported PostgreSQL procedure argument mode.');
-                return 'NULL';
+                if (arg.mode === 'out') return 'NULL';
+                if (arg.mode === 'inout') return context.bindValue(arg.value);
+                throw new Error('Unsupported PostgreSQL procedure argument mode.');
             }
             return context.bindValue(arg);
         });

@@ -377,7 +377,7 @@ Inside `db.transaction`, use `scope.executeFunction` to share the transaction's 
 
 ### Call a PostgreSQL procedure with output parameters
 
-Use `executeProcedure` to call an existing procedure. Pass input values in order and use `{ mode: 'out' }` for each OUT position. For a signature such as `reporting.refresh_customer(IN customer_id integer, OUT updated_count integer)`, PostgreSQL returns one row with the output column `updated_count`.
+Use `executeProcedure` to call an existing procedure. Pass input values in order. Use `{ mode: 'out' }` for each OUT position and `{ mode: 'inout', value: initialValue }` for each INOUT position. TyORM binds the INOUT value, and the returned row contains its updated value under the parameter name. For a signature such as `reporting.refresh_customer(IN customer_id integer, OUT updated_count integer)`, PostgreSQL returns one row with the output column `updated_count`.
 
 ```ts
 const { rows: output } = await db.executeProcedure({
