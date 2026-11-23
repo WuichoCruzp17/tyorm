@@ -160,7 +160,7 @@ export class PostgresSelectCompiler implements SqlCompiler {
 
             const expression = selection.expression;
 
-            if (expression.kind !== 'column' && expression.kind !== 'aggregate') {
+            if (expression.kind !== 'column' && expression.kind !== 'aggregate' && expression.kind !== 'vector-distance') {
                 throw new Error(
                     `Unsupported SELECT expression: ${expression.kind}.`
                 );

@@ -8,6 +8,7 @@ import {
 import {
     Entity,
     executeDtoQuery,
+    vectorDistance,
     PrimaryKey,
     Column,
     QuerySemanticResolver,
@@ -1243,5 +1244,49 @@ describe('PostgreSQL mutation compilation', () => {
         });
         expect(() => compiler.compileMutation({ ...target, kind: 'delete', key: [] }))
             .toThrow('DELETE requires a primary key.');
+    });
+});
+
+describe('PostgreSQL vector distance', () => {
+    @Entity({ name: 'documents' })
+    class Document {
+        @PrimaryKey({ type: 'integer' })
+        id!: number;
+
+        @Column({ type: 'vector', name: 'embedding_data' })
+        embedding!: number[];
+    }
+
+    const resolver = new QuerySemanticResolver(new OrmMetadataModel([getEntityMetadata(Document)]));
+    const compiler = new PostgresSelectCompiler();
+
+    it.each([['l2', '<->'], ['cosine', '<=>']] as const)('compiles %s with bound vector values', (metric, operator) => {
+        const input = [1, 2];
+        const distance = vectorDistance(column('d', 'embedding'), input, metric);
+        input[0] = 9;
+        const compiled = compiler.compile(resolver.resolve({
+            kind: 'select',
+            from: { entity: Document, alias: 'd' },
+            selections: [{ expression: distance, alias: 'distance' }],
+            joins: [], distinct: false,
+            orderBy: [{ expression: distance, direction: 'asc' }],
+            limit: 3
+        }));
+        expect(compiled).toEqual({
+            sql: `SELECT ("d"."embedding_data" ${operator} $1::vector) AS "distance" FROM "documents" AS "d" ORDER BY ("d"."embedding_data" ${operator} $2::vector) ASC LIMIT $3`,
+            parameters: ['[1,2]', '[1,2]', 3]
+        });
+    });
+
+    it('rejects invalid components and non-vector columns before compilation', () => {
+        const resolve = (distance: ReturnType<typeof vectorDistance>) => resolver.resolve({
+            kind: 'select',
+            from: { entity: Document, alias: 'd' },
+            selections: [{ expression: distance }],
+            joins: [], distinct: false, orderBy: []
+        });
+        expect(() => resolve(vectorDistance(column('d', 'embedding'), [Infinity]))).toThrow('finite');
+        expect(() => resolve(vectorDistance(column('d', 'embedding'), [0], 'cosine'))).toThrow('nonzero');
+        expect(() => resolve(vectorDistance(column('d', 'id'), [1]))).toThrow('must have type vector');
     });
 });

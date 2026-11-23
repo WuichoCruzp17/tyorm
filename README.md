@@ -323,6 +323,33 @@ const savedDepartment = await db.transaction(async scope => {
 });
 ```
 
+### Search by vector distance in PostgreSQL
+
+Enable the [pgvector extension](https://github.com/pgvector/pgvector) in the database and declare the physical column as `vector(n)`, where `n` is the embedding dimension. Register the entity with the PostgreSQL DataSource. For example, map `Document.embedding` with `@Column({ type: 'vector' })` and use `vectorDistance` to select and order by distance:
+
+```ts
+import { vectorDistance } from '@tyorm/core';
+
+async function findNearest(
+    source: DataSource,
+    document: import('@tyorm/core').EntityTarget,
+    embedding: readonly number[]
+) {
+    const distance = vectorDistance(column('d', 'embedding'), embedding, 'cosine');
+    return source.execute({
+        kind: 'select',
+        from: { entity: document, alias: 'd' },
+        selections: [{ expression: column('d', 'id') }, { expression: distance, alias: 'distance' }],
+        joins: [],
+        orderBy: [{ expression: distance, direction: 'asc' }],
+        distinct: false,
+        limit: 5
+    });
+}
+```
+
+`vectorDistance` supports Euclidean distance (`'l2'`, the default) and cosine distance (`'cosine'`). The driver binds the query vector as a parameter. The embedding length must match the column dimension. The SQLite provider rejects vector distance expressions.
+
 ## Driver extension points
 
 - `DriverProvider` creates a compatible driver and compiler for the engine selected by DataSource.

@@ -376,6 +376,12 @@ Validación de distribución del 23 de noviembre de 2026. Se instalaron los tarb
 
 Validación del 23 de noviembre de 2026. Pasaron los tres typecheck, el chequeo estricto de la suite modificada y 151 pruebas de PostgreSQL. `transaction-context.integration.test.ts` verifica el commit de escrituras que el callback deja pendientes, el orden de los errores SQL 23505 y 25P02, la reversión de una escritura previa y la reutilización de la misma sesión después del rollback. El fixture usa una tabla temporal y un pool con una sola conexión. Durante la suite, `pg` emitió una advertencia de obsolescencia al enviar otra consulta a un cliente ocupado.
 
+### 8.4 Consultas de vectores en PostgreSQL
+
+`@Column({ type: 'vector' })` declara una propiedad vectorial. `vectorDistance` admite L2 y coseno. Core valida los componentes y resuelve la columna física. PostgreSQL vincula el vector como parámetro, usa los operadores de pgvector y delega al motor la comprobación de dimensiones. El proveedor SQLite rechaza esta expresión.
+
+Pasaron el build de Core, los tres typecheck y 312 pruebas de Core, 154 del paquete PostgreSQL y 7 del paquete SQLite. La prueba de vecinos sobre PostgreSQL real quedó omitida porque pgvector no estaba habilitado en la base de pruebas.
+
 ## 9. Comandos de validación
 
 Ejecutar desde la raíz del monorepo, confirmando que los scripts existen:
