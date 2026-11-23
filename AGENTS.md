@@ -288,7 +288,7 @@ Validación del 20 de noviembre de 2026. Pasaron ambos typecheck, el typecheck d
 6. DTO explícitos completados y validados según la sección 7.7. Proyecciones automáticas validadas según la sección 7.8. API de consultas tipo records validada según la sección 7.9.
 7. Compatibilidad de decoradores legacy completada y validada según la sección 7.10.
 8. **Fase 8.1:** arranque, repositorios de lectura, repositorios transaccionales y escritura con save completados.
-9. Ampliar a un segundo motor tras estabilizar el contrato del proveedor.
+9. **Segundo motor:** proveedor SQLite de lectura y escritura implementado. El contrato común de DataSource está verificado en SQLite y PostgreSQL.
 10. Mantener/regresar a pruebas de integración PostgreSQL, especialmente comportamiento tras errores SQL y consultas pendientes en una transacción.
 
 ### 8.1 Próxima fase — DataSource y repositorios
@@ -357,6 +357,20 @@ Validación del 23 de noviembre de 2026. Pasaron ambos builds y typecheck, el ty
 - Las escrituras concurrentes con clave asignada se resuelven por la restricción de clave primaria. Las columnas escritas por ambas operaciones conservan el valor de la última actualización efectiva. El nivel de aislamiento configurado rige la transacción y los errores de serialización se propagan al llamador.
 
 Validación del 23 de noviembre de 2026. Pasaron ambos builds y typecheck, el typecheck de pruebas de Core, 312 pruebas de Core y 143 de PostgreSQL. La integración verificó los dos tipos de clave, la devolución de una entidad nueva, el rollback de un repositorio personalizado y dos guardados de la misma clave desde transacciones concurrentes en READ COMMITTED.
+
+### 8.2 Segundo motor — SQLite
+
+El paquete `@tyorm/sqlite` exporta `sqliteProvider` y usa `node:sqlite` con Node 22.16 o posterior dentro de la rama 22, o Node 24 en adelante. El proveedor se registra en `DataSource` con `sqlite: async () => (await import('@tyorm/sqlite')).sqliteProvider()`. La opción `database` admite una ruta o `:memory:`.
+
+El compilador traduce SELECT, predicados, JOIN directos y de tabla intermedia, agrupación, agregados y paginación. El driver usa una conexión SQLite síncrona y serializa los préstamos para que una transacción mantenga el acceso exclusivo. Admite el aislamiento predeterminado de SQLite o `SERIALIZABLE` y revierte cualquier transacción abierta antes de liberar el préstamo. SQLite admite INSERT, UPDATE y DELETE mediante `executeMutation` y las operaciones de `Repository.save`. El compilador vincula valores, usa `RETURNING` para recuperar las columnas escalares y aplica `ON CONFLICT` con la clave primaria completa para claves asignadas. El driver cuenta las filas devueltas por las mutaciones compiladas.
+
+Validación del 23 de noviembre de 2026 con Node 26.13. Pasaron el build de SQLite, los tres typecheck y 312 pruebas de Core, 143 de PostgreSQL y 6 de SQLite. En SQLite se verificaron la selección del proveedor, las lecturas transaccionales, la espera de otra conexión, el rollback al liberar, la conservación de enteros de 64 bits y la paginación con solo desplazamiento. Las pruebas de escritura en memoria cubren claves generadas, claves compuestas, filas afectadas, commit y rollback.
+
+La suite `provider-parity.integration.test.ts` ejecuta las mismas comprobaciones de DataSource en ambos motores con tablas temporales. Cubre claves compuestas, paginación con orden estable y solo desplazamiento, JOIN directo, parámetros nombrados, GROUP BY/HAVING, claves generadas, UPSERT y commit/rollback. La comprobación del agregado normaliza el tipo devuelto por el driver. Las opciones de aislamiento y los tipos nativos se rigen por cada motor.
+
+Validación del 23 de noviembre de 2026. Pasaron los tres typecheck, el chequeo estricto de la suite compartida y las suites completas con 312 pruebas de Core, 149 en el paquete PostgreSQL (incluidas las seis de paridad) y 6 en el paquete SQLite. Ejecutar solo la paridad con `pnpm --filter @tyorm/postgres exec vitest run --mode test tests/provider-parity.integration.test.ts`.
+
+Validación de distribución del 23 de noviembre de 2026. Se instalaron los tarballs de Core y SQLite con npm sin acceso a la red, en una aplicación temporal externa al monorepo. La aplicación compiló con TypeScript, cargó `@tyorm/core/register` y el proveedor SQLite por importación dinámica, guardó una entidad con clave generada y recuperó el registro tras cerrar y reabrir el archivo. El build de Core incluye ahora la entrada pública `register`. El workspace pasó los tres builds y typecheck, el chequeo estricto de la prueba modificada y 468 pruebas en total, incluidas 7 del paquete SQLite y las seis de paridad.
 
 ## 9. Comandos de validación
 
