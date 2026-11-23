@@ -372,6 +372,10 @@ Validación del 23 de noviembre de 2026. Pasaron los tres typecheck, el chequeo 
 
 Validación de distribución del 23 de noviembre de 2026. Se instalaron los tarballs de Core y SQLite con npm sin acceso a la red, en una aplicación temporal externa al monorepo. La aplicación compiló con TypeScript, cargó `@tyorm/core/register` y el proveedor SQLite por importación dinámica, guardó una entidad con clave generada y recuperó el registro tras cerrar y reabrir el archivo. El build de Core incluye ahora la entrada pública `register`. El workspace pasó los tres builds y typecheck, el chequeo estricto de la prueba modificada y 468 pruebas en total, incluidas 7 del paquete SQLite y las seis de paridad.
 
+### 8.3 Regresión de transacciones PostgreSQL
+
+Validación del 23 de noviembre de 2026. Pasaron los tres typecheck, el chequeo estricto de la suite modificada y 151 pruebas de PostgreSQL. `transaction-context.integration.test.ts` verifica el commit de escrituras que el callback deja pendientes, el orden de los errores SQL 23505 y 25P02, la reversión de una escritura previa y la reutilización de la misma sesión después del rollback. El fixture usa una tabla temporal y un pool con una sola conexión. Durante la suite, `pg` emitió una advertencia de obsolescencia al enviar otra consulta a un cliente ocupado.
+
 ## 9. Comandos de validación
 
 Ejecutar desde la raíz del monorepo, confirmando que los scripts existen:
