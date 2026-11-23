@@ -382,6 +382,8 @@ Validación del 23 de noviembre de 2026. Pasaron los tres typecheck, el chequeo 
 
 Pasaron el build de Core, los tres typecheck y 312 pruebas de Core, 154 del paquete PostgreSQL y 7 del paquete SQLite. La prueba de vecinos sobre PostgreSQL real quedó omitida porque pgvector no estaba habilitado en la base de pruebas.
 
+Validación de extremo a extremo del 23 de noviembre de 2026. La integración pasó por el driver PostgreSQL de TyORM y `pg` contra un servidor TCP temporal de PGlite con la extensión pgvector 0.8.7. Verificó el orden y la distancia de los vecinos para L2 y coseno, y el error de dimensiones incompatibles. El servidor PostgreSQL local sigue sin la extensión. Para reproducir la prueba con una base que ya tenga pgvector habilitado, configurar sus variables PG y ejecutar `pnpm --filter @tyorm/postgres exec vitest run --mode test tests/vector.integration.test.ts`.
+
 ## 9. Comandos de validación
 
 Ejecutar desde la raíz del monorepo, confirmando que los scripts existen:

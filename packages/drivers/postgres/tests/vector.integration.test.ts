@@ -46,13 +46,22 @@ it('ranks nearest neighbors using pgvector', async ({ skip }) => {
             await connection.release();
         }
 
-        const distance = vectorDistance(column('d', 'embedding'), [1, 0], 'cosine');
-        const { rows } = await source.execute({
-            kind: 'select', from: { entity: Document, alias: 'd' },
-            selections: [{ expression: column('d', 'id') }, { expression: distance, alias: 'distance' }],
-            joins: [], orderBy: [{ expression: distance, direction: 'asc' }], distinct: false, limit: 2
-        });
-        expect(rows).toEqual([{ id: 2, distance: 0 }, { id: 1, distance: 1 }]);
+        const nearest = (metric: 'l2' | 'cosine', embedding: readonly number[]) => {
+            const distance = vectorDistance(column('d', 'embedding'), embedding, metric);
+            return source.execute({
+                kind: 'select', from: { entity: Document, alias: 'd' },
+                selections: [{ expression: column('d', 'id') }, { expression: distance, alias: 'distance' }],
+                joins: [], orderBy: [{ expression: distance, direction: 'asc' }], distinct: false, limit: 2
+            });
+        };
+
+        const cosine = await nearest('cosine', [1, 0]);
+        expect(cosine.rows).toEqual([{ id: 2, distance: 0 }, { id: 1, distance: 1 }]);
+        const euclidean = await nearest('l2', [1, 0]);
+        expect(euclidean.rows.map(row => row.id)).toEqual([2, 1]);
+        expect(euclidean.rows[0]?.distance).toBe(0);
+        expect(euclidean.rows[1]?.distance).toBeCloseTo(Math.SQRT2);
+        await expect(nearest('l2', [1, 0, 0])).rejects.toThrow('different vector dimensions');
     } finally {
         await source.close();
     }
