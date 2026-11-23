@@ -4,7 +4,7 @@ import type { DatabaseDriver, DriverConfig, QueryResult, TransactionOptions } fr
 import { TransactionManager } from './transactions';
 import { getEntityMetadata } from './decorators';
 import { OrmMetadataModel, type EntityTarget } from './metadata';
-import { QuerySemanticResolver, type SelectQuery, type SqlCompiler } from './query';
+import { QuerySemanticResolver, resolveMutation, type CompiledQuery, type MutationQuery, type SelectQuery, type SqlCompiler } from './query';
 
 export type DriverProvider = () =>
     | { readonly driver: DatabaseDriver; readonly compiler: SqlCompiler }
@@ -16,9 +16,12 @@ export interface DataSourceOptions extends DriverConfig {
 }
 
 export interface TransactionScope {
+    executeMutation(query: MutationQuery): Promise<QueryResult>;
     getRepository<Instance extends Repository<object>>(target: EntityTarget<Instance>): Instance;
     getRepository<Entity extends object>(target: EntityTarget<Entity>): Repository<Entity>;
 }
+
+type RepositoryScope = Pick<TransactionScope, 'getRepository'>;
 
 export class DataSource {
     private closing: Promise<void> | undefined;
@@ -74,17 +77,20 @@ export class DataSource {
         this.assertOpen();
 
         return new TransactionManager(this.driver).withContext(context => {
-            const execute = async (query: SelectQuery): Promise<QueryResult> => {
+            const execute = async (compile: () => CompiledQuery): Promise<QueryResult> => {
                 if (!context.isActive) {
                     throw new Error('TransactionContext is no longer active.');
                 }
-                return context.execute(this.compiler.compile(this.resolver.resolve(query)));
+                return context.execute(compile());
             };
-            return callback(this.repositoryScope(execute));
+            return callback({
+                ...this.repositoryScope(query => execute(() => this.compiler.compile(this.resolver.resolve(query)))),
+                executeMutation: query => execute(() => this.compileMutation(query))
+            });
         }, options);
     }
 
-    private repositoryScope(execute: (query: SelectQuery) => Promise<QueryResult>): TransactionScope {
+    private repositoryScope(execute: (query: SelectQuery) => Promise<QueryResult>): RepositoryScope {
         const model = this.model;
 
         function getRepository<Instance extends Repository<object>>(target: EntityTarget<Instance>): Instance;
@@ -109,7 +115,22 @@ export class DataSource {
     ): Promise<QueryResult> {
         this.assertOpen();
 
-        const compiled = this.compiler.compile(this.resolver.resolve(query), parameters);
+        return this.executeCompiled(this.compiler.compile(this.resolver.resolve(query), parameters));
+    }
+
+    async executeMutation(query: MutationQuery): Promise<QueryResult> {
+        this.assertOpen();
+        return this.executeCompiled(this.compileMutation(query));
+    }
+
+    private compileMutation(query: MutationQuery): CompiledQuery {
+        if (this.compiler.compileMutation === undefined) {
+            throw new Error('The selected driver does not support mutation queries.');
+        }
+        return this.compiler.compileMutation(resolveMutation(this.model, query));
+    }
+
+    private async executeCompiled(compiled: CompiledQuery): Promise<QueryResult> {
         const connection = await this.driver.acquireConnection();
         let result: QueryResult;
         try {

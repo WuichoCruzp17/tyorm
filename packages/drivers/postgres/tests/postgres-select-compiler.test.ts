@@ -1216,3 +1216,32 @@ describe('PostgresSelectCompiler', () => {
     });
 
 });
+
+describe('PostgreSQL mutation compilation', () => {
+    const compiler = new PostgresSelectCompiler();
+    const target = {
+        schema: 'app',
+        table: 'doc"uments',
+        returning: [{ column: 'doc_id', alias: 'id' }]
+    };
+
+    it('uses DEFAULT VALUES when every insert column is generated or omitted', () => {
+        expect(compiler.compileMutation({ ...target, kind: 'insert', values: [] })).toEqual({
+            sql: 'INSERT INTO "app"."doc""uments" DEFAULT VALUES RETURNING "doc_id" AS "id"',
+            parameters: []
+        });
+    });
+
+    it('binds update values before all components of the key', () => {
+        expect(compiler.compileMutation({
+            ...target, kind: 'update',
+            values: [{ column: 'title', value: "O'Brien" }],
+            key: [{ column: 'doc_id', value: 3 }, { column: 'tenant_id', value: 8 }]
+        })).toEqual({
+            sql: 'UPDATE "app"."doc""uments" SET "title" = $1 WHERE "doc_id" = $2 AND "tenant_id" = $3 RETURNING "doc_id" AS "id"',
+            parameters: ["O'Brien", 3, 8]
+        });
+        expect(() => compiler.compileMutation({ ...target, kind: 'delete', key: [] }))
+            .toThrow('DELETE requires a primary key.');
+    });
+});

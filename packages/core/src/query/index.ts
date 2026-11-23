@@ -5,5 +5,6 @@ export * from './validation';
 export * from './normalization';
 export * from './semantic';
 export * from './compiler';
+export * from './mutation';
 export * from './execute-dto-query';
 export * from './execute-record-query';

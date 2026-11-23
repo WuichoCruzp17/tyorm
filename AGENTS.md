@@ -344,6 +344,14 @@ Validación del 20 de noviembre de 2026. Pasaron el build, ambos typecheck, el c
 
 Validación del 23 de noviembre de 2026. Pasaron el build de Core, ambos typecheck, el typecheck de pruebas de Core, 308 pruebas de Core y 139 de PostgreSQL. Las pruebas unitarias comprobaron la conexión compartida, el commit, el rollback ante un error SQL y la liberación. La integración de repositorios confirmó el aislamiento serializable y el modo de solo lectura en PostgreSQL, además de comprobar el rechazo de consultas fuera del alcance y la recuperación tras abortar el callback.
 
+#### Entrega D en curso — Escrituras explícitas
+
+`DataSource.executeMutation` y `TransactionScope.executeMutation` ejecutan INSERT, UPDATE y DELETE para una entidad registrada. Core resuelve los nombres físicos, valida propiedades de escritura y exige la clave primaria completa para actualizar o borrar. El INSERT aplica los defaults de metadatos y delega las claves generadas a la base de datos. PostgreSQL vincula todos los valores y devuelve las columnas escalares con los nombres lógicos de la entidad. Un proveedor puede seguir soportando solo SELECT; en ese caso ejecutar una mutación produce un error explícito.
+
+Validación del 23 de noviembre de 2026. Pasaron ambos builds y typecheck, el typecheck de pruebas de Core, 310 pruebas de Core y 142 de PostgreSQL. La integración sobre una tabla temporal verificó la clave generada, la visibilidad de la actualización dentro de la transacción, su rollback, el commit del borrado y el resultado vacío al borrar una clave ausente.
+
+La semántica de `save` queda pendiente. Falta definir la identificación de entidades nuevas, el retorno y las garantías ante escrituras concurrentes.
+
 ## 9. Comandos de validación
 
 Ejecutar desde la raíz del monorepo, confirmando que los scripts existen:

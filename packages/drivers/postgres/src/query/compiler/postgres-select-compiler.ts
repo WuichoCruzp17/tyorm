@@ -4,6 +4,7 @@ import type {
     SqlCompiler,
     SqlDialect,
     ResolvedSelectQuery,
+    ResolvedMutation,
     ResolvedJoin,
     ResolvedJoinCondition,
     ResolvedJoinColumn
@@ -97,6 +98,39 @@ export class PostgresSelectCompiler implements SqlCompiler {
         });
     }
 
+
+    compileMutation(query: ResolvedMutation): CompiledQuery {
+        const context = new PostgresCompilationContext({}, this.dialect);
+        const quote = (name: string) => this.dialect.quoteIdentifier(name);
+        const table = query.schema === undefined ? quote(query.table) : `${quote(query.schema)}.${quote(query.table)}`;
+        const returning = query.returning.map(({ column, alias }) => `${quote(column)} AS ${quote(alias)}`);
+        const equality = ({ column, value }: { readonly column: string; readonly value: unknown }) =>
+            `${quote(column)} = ${context.bindValue(value)}`;
+
+        let sql: string;
+        switch (query.kind) {
+            case 'insert': {
+                const columns = query.values.map(({ column }) => quote(column));
+                const placeholders = query.values.map(({ value }) => context.bindValue(value));
+                sql = columns.length === 0
+                    ? `INSERT INTO ${table} DEFAULT VALUES`
+                    : `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${placeholders.join(', ')})`;
+                break;
+            }
+            case 'update':
+                if (query.values.length === 0 || query.key.length === 0) {
+                    throw new Error('UPDATE requires assignments and a primary key.');
+                }
+                sql = `UPDATE ${table} SET ${query.values.map(equality).join(', ')} WHERE ${query.key.map(equality).join(' AND ')}`;
+                break;
+            case 'delete':
+                if (query.key.length === 0) throw new Error('DELETE requires a primary key.');
+                sql = `DELETE FROM ${table} WHERE ${query.key.map(equality).join(' AND ')}`;
+                break;
+        }
+        if (returning.length > 0) sql += ` RETURNING ${returning.join(', ')}`;
+        return Object.freeze({ sql, parameters: context.getParameters() });
+    }
 
     private compileSelect(
         resolved: ResolvedSelectQuery,

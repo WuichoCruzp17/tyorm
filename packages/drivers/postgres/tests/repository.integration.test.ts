@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { Column, DataSource, Entity, PrimaryKey, ReadRepository, RepositoryDecorator as Repository, eq, literal } from '@tyorm/core';
-import { postgresProvider } from '../src';
+import { Column, DataSource, Entity, PrimaryKey, ReadRepository, RepositoryDecorator as Repository, eq, literal, type DriverConfig } from '@tyorm/core';
+import { PostgreSQLDriver, postgresProvider } from '../src';
 
 @Entity({ schema: 'pg_catalog', name: 'pg_type' })
 class PgType {
@@ -98,4 +98,71 @@ describe('PostgreSQL read repositories', () => {
             await source.close();
         }
     });
+});
+
+@Entity({ schema: 'pg_temp', name: 'tyorm_mutation_test' })
+class MutationRow {
+    @PrimaryKey({ type: 'integer', name: 'row_id', generation: 'increment' })
+    id!: number;
+
+    @Column({ type: 'string', name: 'row_label' })
+    label!: string;
+}
+
+class TemporaryTableDriver extends PostgreSQLDriver {
+    override async connect(config: DriverConfig): Promise<void> {
+        await super.connect(config);
+        const connection = await this.acquireConnection();
+        try {
+            await connection.execute({
+                sql: 'CREATE TEMP TABLE tyorm_mutation_test (row_id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY, row_label text NOT NULL)'
+            });
+        } finally {
+            await connection.release();
+        }
+    }
+}
+
+it('writes a temporary table and shares mutations with transactional repositories', async () => {
+    const password = process.env.PGPASSWORD;
+    const source = await DataSource.connect({
+        type: 'postgres',
+        providers: { postgres: () => ({ ...postgresProvider(), driver: new TemporaryTableDriver() }) },
+        entities: [MutationRow],
+        host: process.env.PGHOST ?? 'localhost',
+        port: Number(process.env.PGPORT ?? 5432),
+        database: process.env.PGDATABASE ?? 'tyorm_test',
+        username: process.env.PGUSER ?? 'postgres',
+        pool: { min: 1, max: 1 },
+        ...(password === undefined ? {} : { password })
+    });
+
+    try {
+        const entity = MutationRow;
+        const label = "O'Brien";
+        const inserted = await source.executeMutation({ kind: 'insert', entity, values: { label } });
+        const id = inserted.rows[0]?.id;
+        if (typeof id !== 'number') throw new Error('Expected a generated integer key.');
+        expect(inserted).toMatchObject({ affectedRows: 1, rows: [{ id, label }] });
+
+        const rollback = new Error('Undo update');
+        await expect(source.transaction(async scope => {
+            await expect(scope.executeMutation({
+                kind: 'update', entity, key: { id }, values: { label: 'updated' }
+            })).resolves.toMatchObject({ affectedRows: 1, rows: [{ id, label: 'updated' }] });
+            await expect(scope.getRepository(entity).findById(id)).resolves.toMatchObject({ label: 'updated' });
+            throw rollback;
+        })).rejects.toBe(rollback);
+
+        const repository = source.getRepository(entity);
+        await expect(repository.findById(id)).resolves.toMatchObject({ label });
+        await expect(source.transaction(scope =>
+            scope.executeMutation({ kind: 'delete', entity, key: { id } })
+        )).resolves.toMatchObject({ affectedRows: 1, rows: [{ id, label }] });
+        await expect(repository.findById(id)).resolves.toBeNull();
+        await expect(source.executeMutation({ kind: 'delete', entity, key: { id } }))
+            .resolves.toMatchObject({ affectedRows: 0, rows: [] });
+    } finally {
+        await source.close();
+    }
 });
