@@ -111,6 +111,8 @@ export class MySQLSelectCompiler implements SqlCompiler {
                     if (!reference) throw new Error(`Unresolved column "${node.alias}.${node.property}".`);
                     return column(reference);
                 }
+                case 'vector-distance':
+                    throw new Error('The MySQL provider does not support vector distance queries.');
                 case 'aggregate': {
                     const name = aggregates.get(node.function);
                     if (name === undefined) throw new Error('Unsupported aggregate function.');
