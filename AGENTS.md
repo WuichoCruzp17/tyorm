@@ -287,7 +287,7 @@ Validación del 20 de noviembre de 2026. Pasaron ambos typecheck, el typecheck d
 5. **5.2.2.7:** GROUP BY completado y validado según la sección 7.4. HAVING quedó completado en la **fase 5.2.2.8** según la sección 7.5. Las funciones agregadas quedaron completadas en la **fase 5.2.2.9** según la sección 7.6.
 6. DTO explícitos completados y validados según la sección 7.7. Proyecciones automáticas validadas según la sección 7.8. API de consultas tipo records validada según la sección 7.9.
 7. Compatibilidad de decoradores legacy completada y validada según la sección 7.10.
-8. **Fase 8.1:** arranque, repositorios de lectura y repositorios transaccionales completados. Sigue la entrega D de escritura y semántica de save.
+8. **Fase 8.1:** arranque, repositorios de lectura, repositorios transaccionales y escritura con save completados.
 9. Ampliar a un segundo motor tras estabilizar el contrato del proveedor.
 10. Mantener/regresar a pruebas de integración PostgreSQL, especialmente comportamiento tras errores SQL y consultas pendientes en una transacción.
 
@@ -344,13 +344,19 @@ Validación del 20 de noviembre de 2026. Pasaron el build, ambos typecheck, el c
 
 Validación del 23 de noviembre de 2026. Pasaron el build de Core, ambos typecheck, el typecheck de pruebas de Core, 308 pruebas de Core y 139 de PostgreSQL. Las pruebas unitarias comprobaron la conexión compartida, el commit, el rollback ante un error SQL y la liberación. La integración de repositorios confirmó el aislamiento serializable y el modo de solo lectura en PostgreSQL, además de comprobar el rechazo de consultas fuera del alcance y la recuperación tras abortar el callback.
 
-#### Entrega D en curso — Escrituras explícitas
+#### Entrega D completada — Escrituras explícitas y save
 
 `DataSource.executeMutation` y `TransactionScope.executeMutation` ejecutan INSERT, UPDATE y DELETE para una entidad registrada. Core resuelve los nombres físicos, valida propiedades de escritura y exige la clave primaria completa para actualizar o borrar. El INSERT aplica los defaults de metadatos y delega las claves generadas a la base de datos. PostgreSQL vincula todos los valores y devuelve las columnas escalares con los nombres lógicos de la entidad. Un proveedor puede seguir soportando solo SELECT; en ese caso ejecutar una mutación produce un error explícito.
 
 Validación del 23 de noviembre de 2026. Pasaron ambos builds y typecheck, el typecheck de pruebas de Core, 310 pruebas de Core y 142 de PostgreSQL. La integración sobre una tabla temporal verificó la clave generada, la visibilidad de la actualización dentro de la transacción, su rollback, el commit del borrado y el resultado vacío al borrar una clave ausente.
 
-La semántica de `save` queda pendiente. Falta definir la identificación de entidades nuevas, el retorno y las garantías ante escrituras concurrentes.
+`Repository.save(Partial<Entity>)` está disponible en repositorios de entidad y personalizados obtenidos de `DataSource` o de un alcance transaccional. Devuelve una instancia nueva con las columnas escalares persistidas y conserva el objeto de entrada.
+
+- Si la entidad declara claves generadas y todas se omiten, `save` inserta. Si se informa alguna, exige la clave primaria completa y al menos una columna actualizable. Actualiza esa fila y produce un error si ya no existe.
+- Para claves asignadas por la aplicación, `save` exige todos los componentes y los valores requeridos por el INSERT. PostgreSQL usa una sola sentencia `INSERT ... ON CONFLICT ... DO UPDATE ... RETURNING`. En caso de conflicto solo aplica los campos actualizables suministrados. Si no se suministra ninguno, PostgreSQL asigna la clave a su mismo valor para devolver la fila, lo que puede activar triggers de UPDATE.
+- Las escrituras concurrentes con clave asignada se resuelven por la restricción de clave primaria. Las columnas escritas por ambas operaciones conservan el valor de la última actualización efectiva. El nivel de aislamiento configurado rige la transacción y los errores de serialización se propagan al llamador.
+
+Validación del 23 de noviembre de 2026. Pasaron ambos builds y typecheck, el typecheck de pruebas de Core, 312 pruebas de Core y 143 de PostgreSQL. La integración verificó los dos tipos de clave, la devolución de una entidad nueva, el rollback de un repositorio personalizado y dos guardados de la misma clave desde transacciones concurrentes en READ COMMITTED.
 
 ## 9. Comandos de validación
 

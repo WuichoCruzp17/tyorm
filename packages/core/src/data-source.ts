@@ -67,7 +67,10 @@ export class DataSource {
     getRepository<Instance extends Repository<object>>(target: EntityTarget<Instance>): Instance;
     getRepository<Entity extends object>(target: EntityTarget<Entity>): Repository<Entity>;
     getRepository(target: EntityTarget): object {
-        return this.repositoryScope(query => this.execute(query)).getRepository(target);
+        return this.repositoryScope(
+            query => this.execute(query),
+            query => this.executeMutation(query)
+        ).getRepository(target);
     }
 
     async transaction<T>(
@@ -83,14 +86,22 @@ export class DataSource {
                 }
                 return context.execute(compile());
             };
+            const executeMutation = (query: MutationQuery) => execute(() => this.compileMutation(query));
             return callback({
-                ...this.repositoryScope(query => execute(() => this.compiler.compile(this.resolver.resolve(query)))),
-                executeMutation: query => execute(() => this.compileMutation(query))
+                ...this.repositoryScope(
+                    query => execute(() => this.compiler.compile(this.resolver.resolve(query))),
+                    executeMutation
+                ),
+                executeMutation
             });
         }, options);
     }
 
-    private repositoryScope(execute: (query: SelectQuery) => Promise<QueryResult>): RepositoryScope {
+    private repositoryScope(
+        select: (query: SelectQuery) => Promise<QueryResult>,
+        mutation: (query: MutationQuery) => Promise<QueryResult>
+    ): RepositoryScope {
+        const execute = Object.assign(select, { mutation });
         const model = this.model;
 
         function getRepository<Instance extends Repository<object>>(target: EntityTarget<Instance>): Instance;

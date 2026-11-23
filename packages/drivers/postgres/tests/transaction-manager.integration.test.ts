@@ -9,10 +9,20 @@ import {
 
 import { randomUUID } from 'node:crypto';
 
-import { TransactionManager } from '@tyorm/core';
+import { Column, DataSource, Entity, PrimaryKey, TransactionManager } from '@tyorm/core';
+import { postgresProvider } from '../src';
 import { PostgreSQLDriver } from '../src/driver/postgresql-driver';
 
 const TABLE = 'tyorm_test.transaction_manager_test';
+
+@Entity({ schema: 'tyorm_test', name: 'transaction_manager_test' })
+class TransactionRow {
+  @PrimaryKey({ type: 'uuid' })
+  id!: string;
+
+  @Column({ type: 'string' })
+  name!: string;
+}
 
 describe('TransactionManager PostgreSQL Integration', () => {
   const driver = new PostgreSQLDriver();
@@ -81,6 +91,40 @@ describe('TransactionManager PostgreSQL Integration', () => {
       }
     } finally {
       await driver.disconnect();
+    }
+  });
+
+  it('saves an assigned key from two concurrent transactions without a duplicate row', async () => {
+    const password = process.env.PGPASSWORD;
+    const source = await DataSource.connect({
+      type: 'postgres',
+      providers: { postgres: postgresProvider },
+      entities: [TransactionRow],
+      host: process.env.PGHOST ?? 'localhost',
+      port: Number(process.env.PGPORT ?? 5432),
+      database: process.env.PGDATABASE ?? 'tyorm_test',
+      username: process.env.PGUSER ?? 'postgres',
+      pool: { min: 1, max: 2 },
+      ...(password === undefined ? {} : { password })
+    });
+    const id = randomUUID();
+    createdIds.add(id);
+
+    try {
+      const results = await Promise.allSettled(['First', 'Second'].map(name =>
+        source.transaction(scope => scope.getRepository(TransactionRow).save({ id, name }), {
+          isolationLevel: 'READ_COMMITTED'
+        })
+      ));
+      expect(results).toEqual([
+        { status: 'fulfilled', value: expect.objectContaining({ id, name: 'First' }) },
+        { status: 'fulfilled', value: expect.objectContaining({ id, name: 'Second' }) }
+      ]);
+      const row = await source.getRepository(TransactionRow).findById(id);
+      expect(row?.id).toBe(id);
+      expect(['First', 'Second']).toContain(row?.name);
+    } finally {
+      await source.close();
     }
   });
 

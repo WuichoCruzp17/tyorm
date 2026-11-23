@@ -109,12 +109,23 @@ export class PostgresSelectCompiler implements SqlCompiler {
 
         let sql: string;
         switch (query.kind) {
-            case 'insert': {
+            case 'insert':
+            case 'upsert': {
                 const columns = query.values.map(({ column }) => quote(column));
                 const placeholders = query.values.map(({ value }) => context.bindValue(value));
                 sql = columns.length === 0
                     ? `INSERT INTO ${table} DEFAULT VALUES`
                     : `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${placeholders.join(', ')})`;
+                if (query.kind === 'upsert') {
+                    const [first] = query.conflictColumns;
+                    if (first === undefined || columns.length === 0) {
+                        throw new Error('UPSERT requires insert values and a primary key.');
+                    }
+                    const assignments = query.assignments.length > 0
+                        ? query.assignments.map(equality).join(', ')
+                        : `${quote(first)} = EXCLUDED.${quote(first)}`;
+                    sql += ` ON CONFLICT (${query.conflictColumns.map(quote).join(', ')}) DO UPDATE SET ${assignments}`;
+                }
                 break;
             }
             case 'update':

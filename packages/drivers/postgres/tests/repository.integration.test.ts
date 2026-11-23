@@ -109,6 +109,18 @@ class MutationRow {
     label!: string;
 }
 
+@Entity({ schema: 'pg_temp', name: 'tyorm_save_test' })
+class AssignedRow {
+    @PrimaryKey({ type: 'string', name: 'row_key' })
+    key!: string;
+
+    @Column({ type: 'string', name: 'row_label', default: 'default' })
+    label!: string;
+}
+
+@Repository(AssignedRow)
+class AssignedRepository extends ReadRepository<AssignedRow, string> {}
+
 class TemporaryTableDriver extends PostgreSQLDriver {
     override async connect(config: DriverConfig): Promise<void> {
         await super.connect(config);
@@ -116,6 +128,9 @@ class TemporaryTableDriver extends PostgreSQLDriver {
         try {
             await connection.execute({
                 sql: 'CREATE TEMP TABLE tyorm_mutation_test (row_id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY, row_label text NOT NULL)'
+            });
+            await connection.execute({
+                sql: 'CREATE TEMP TABLE tyorm_save_test (row_key text PRIMARY KEY, row_label text NOT NULL)'
             });
         } finally {
             await connection.release();
@@ -128,7 +143,7 @@ it('writes a temporary table and shares mutations with transactional repositorie
     const source = await DataSource.connect({
         type: 'postgres',
         providers: { postgres: () => ({ ...postgresProvider(), driver: new TemporaryTableDriver() }) },
-        entities: [MutationRow],
+        entities: [MutationRow, AssignedRow],
         host: process.env.PGHOST ?? 'localhost',
         port: Number(process.env.PGPORT ?? 5432),
         database: process.env.PGDATABASE ?? 'tyorm_test',
@@ -156,6 +171,30 @@ it('writes a temporary table and shares mutations with transactional repositorie
 
         const repository = source.getRepository(entity);
         await expect(repository.findById(id)).resolves.toMatchObject({ label });
+
+        const newRow = { label: 'saved' };
+        const saved = await repository.save(newRow);
+        expect(saved).toBeInstanceOf(MutationRow);
+        expect(saved.id).toBeGreaterThan(id);
+        expect(newRow).toEqual({ label: 'saved' });
+        await expect(repository.save({ id: saved.id, label: 'edited' }))
+            .resolves.toMatchObject({ id: saved.id, label: 'edited' });
+        await expect(repository.save({ id: -1, label: 'missing' })).rejects.toThrow('Save did not return a row');
+
+        const assigned = source.getRepository(AssignedRepository);
+        await expect(assigned.save({ key: 'item', label: 'initial' }))
+            .resolves.toMatchObject({ key: 'item', label: 'initial' });
+        await expect(assigned.save({ key: 'item' })).resolves.toMatchObject({ label: 'initial' });
+        await expect(source.transaction(async scope => {
+            const transactional = scope.getRepository(AssignedRepository);
+            await expect(transactional.save({ key: 'item', label: 'rolled back' }))
+                .resolves.toMatchObject({ label: 'rolled back' });
+            throw rollback;
+        })).rejects.toBe(rollback);
+        await expect(assigned.findById('item')).resolves.toMatchObject({ label: 'initial' });
+        await expect(assigned.save({ key: 'item', label: 'committed' }))
+            .resolves.toMatchObject({ label: 'committed' });
+        await expect(assigned.count()).resolves.toBe(1n);
         await expect(source.transaction(scope =>
             scope.executeMutation({ kind: 'delete', entity, key: { id } })
         )).resolves.toMatchObject({ affectedRows: 1, rows: [{ id, label }] });

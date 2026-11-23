@@ -1,11 +1,12 @@
-import type { ColumnMetadata, EntityTarget, OrmMetadataModel } from '../metadata';
+import type { ColumnMetadata, EntityTarget, OrmMetadataModel, PrimaryKeyMetadata } from '../metadata';
 
 type Values = Readonly<Record<string, unknown>>;
 
 export type MutationQuery =
     | { readonly kind: 'insert'; readonly entity: EntityTarget; readonly values: Values }
     | { readonly kind: 'update'; readonly entity: EntityTarget; readonly key: Values; readonly values: Values }
-    | { readonly kind: 'delete'; readonly entity: EntityTarget; readonly key: Values };
+    | { readonly kind: 'delete'; readonly entity: EntityTarget; readonly key: Values }
+    | { readonly kind: 'save'; readonly entity: EntityTarget; readonly values: Values };
 
 interface Binding {
     readonly column: string;
@@ -21,7 +22,13 @@ interface MutationTarget {
 export type ResolvedMutation =
     | (MutationTarget & { readonly kind: 'insert'; readonly values: readonly Binding[] })
     | (MutationTarget & { readonly kind: 'update'; readonly key: readonly Binding[]; readonly values: readonly Binding[] })
-    | (MutationTarget & { readonly kind: 'delete'; readonly key: readonly Binding[] });
+    | (MutationTarget & { readonly kind: 'delete'; readonly key: readonly Binding[] })
+    | (MutationTarget & {
+        readonly kind: 'upsert';
+        readonly values: readonly Binding[];
+        readonly conflictColumns: readonly string[];
+        readonly assignments: readonly Binding[];
+    });
 
 export function resolveMutation(model: OrmMetadataModel, query: MutationQuery): ResolvedMutation {
     const { entity } = model.getEntity(query.entity);
@@ -40,20 +47,10 @@ export function resolveMutation(model: OrmMetadataModel, query: MutationQuery): 
     };
 
     switch (query.kind) {
-        case 'insert': {
-            const generated = new Set<ColumnMetadata>(keys.filter(key => key.generation !== 'none'));
-            const writable = new Map([...columns].filter(([, column]) => column.insertable && !generated.has(column)));
-            const values = bindings(query.values, writable);
-            for (const [name, column] of writable) {
-                if (Object.hasOwn(query.values, name)) continue;
-                if (column.hasDefault) {
-                    values.push(bind(column, column.defaultValue));
-                } else if (!column.nullable) {
-                    throw new Error(`Missing required insert property "${name}".`);
-                }
-            }
-            return { ...target, kind: 'insert', values };
-        }
+        case 'insert':
+            return { ...target, kind: 'insert', values: insertBindings(query.values, columns, keys) };
+        case 'save':
+            return resolveSave(query.values, target, columns, keys);
         case 'update': {
             const writable = new Map([...columns].filter(([, column]) => column.updatable && !keys.some(key => key === column)));
             const values = bindings(query.values, writable);
@@ -65,6 +62,65 @@ export function resolveMutation(model: OrmMetadataModel, query: MutationQuery): 
         default:
             throw new Error('Unsupported mutation kind.');
     }
+}
+
+function resolveSave(
+    values: Values,
+    target: MutationTarget,
+    columns: ReadonlyMap<string, ColumnMetadata>,
+    keys: readonly PrimaryKeyMetadata[]
+): ResolvedMutation {
+    if (keys.length === 0) throw new Error('Save requires a primary key.');
+    const supplied = bindings(values, columns);
+    const byColumn = new Map(supplied.map(binding => [binding.column, binding]));
+    const generated = keys.filter(key => key.generation !== 'none');
+    const present = generated.filter(key => byColumn.has(key.columnName));
+    const keyColumns = new Set(keys.map(key => key.columnName));
+    const assignments = [...columns.values()].flatMap(column => {
+        const binding = byColumn.get(column.columnName);
+        return column.updatable && !keyColumns.has(column.columnName) && binding !== undefined ? [binding] : [];
+    });
+
+    if (present.length > 0) {
+        const key = keys.map(column => {
+            const binding = byColumn.get(column.columnName);
+            if (binding === undefined) throw new Error('Save requires all primary-key values for an existing entity.');
+            return binding;
+        });
+        if (assignments.length === 0) throw new Error('Save requires at least one updatable value for an existing entity.');
+        return { ...target, kind: 'update', key, values: assignments };
+    }
+
+    for (const key of keys) {
+        if (key.generation === 'none' && (!key.insertable || !byColumn.has(key.columnName))) {
+            throw new Error(`Save requires an insertable value for primary key "${String(key.propertyKey)}".`);
+        }
+    }
+    const insertValues = Object.fromEntries([...columns].flatMap(([name, column]) =>
+        column.insertable && Object.hasOwn(values, name) ? [[name, values[name]]] : []
+    ));
+    const insert = insertBindings(insertValues, columns, keys);
+    if (generated.length > 0) return { ...target, kind: 'insert', values: insert };
+    return { ...target, kind: 'upsert', values: insert, conflictColumns: [...keyColumns], assignments };
+}
+
+function insertBindings(
+    values: Values,
+    columns: ReadonlyMap<string, ColumnMetadata>,
+    keys: readonly PrimaryKeyMetadata[]
+): Binding[] {
+    const generated = new Set<ColumnMetadata>(keys.filter(key => key.generation !== 'none'));
+    const writable = new Map([...columns].filter(([, column]) => column.insertable && !generated.has(column)));
+    const result = bindings(values, writable);
+    for (const [name, column] of writable) {
+        if (Object.hasOwn(values, name)) continue;
+        if (column.hasDefault) {
+            result.push(bind(column, column.defaultValue));
+        } else if (!column.nullable) {
+            throw new Error(`Missing required insert property "${name}".`);
+        }
+    }
+    return result;
 }
 
 function keyBindings(values: Values, keys: readonly ColumnMetadata[]): Binding[] {

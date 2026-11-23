@@ -55,3 +55,44 @@ describe('resolveMutation', () => {
         })).toThrow('Property "id" is not writable');
     });
 });
+
+@Entity({ name: 'settings' })
+class Setting {
+    @PrimaryKey({ type: 'string', name: 'setting_key' })
+    key!: string;
+
+    @Column({ type: 'string', default: 'default' })
+    value!: string;
+}
+
+describe('save resolution', () => {
+    it('inserts a generated key only when absent and requires the full existing key', () => {
+        expect(resolveMutation(model, {
+            kind: 'save', entity: Document, values: { tenant: 2, title: 'New' }
+        })).toMatchObject({ kind: 'insert' });
+        expect(resolveMutation(model, {
+            kind: 'save', entity: Document, values: { id: 1, tenant: 2, title: 'Edited', status: 'ignored' }
+        })).toMatchObject({
+            kind: 'update',
+            key: [{ column: 'doc_id', value: 1 }, { column: 'tenant_id', value: 2 }],
+            values: [{ column: 'doc_title', value: 'Edited' }]
+        });
+        expect(() => resolveMutation(model, {
+            kind: 'save', entity: Document, values: { id: 1, title: 'Edited' }
+        })).toThrow('all primary-key values');
+    });
+
+    it('uses assigned keys as conflict targets and applies omitted defaults only on insert', () => {
+        const settings = new OrmMetadataModel([getEntityMetadata(Setting)]);
+        expect(resolveMutation(settings, {
+            kind: 'save', entity: Setting, values: { key: 'locale' }
+        })).toMatchObject({
+            kind: 'upsert',
+            conflictColumns: ['setting_key'],
+            values: [{ column: 'setting_key', value: 'locale' }, { column: 'value', value: 'default' }],
+            assignments: []
+        });
+        expect(() => resolveMutation(settings, { kind: 'save', entity: Setting, values: {} }))
+            .toThrow('requires an insertable value for primary key');
+    });
+});

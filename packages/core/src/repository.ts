@@ -2,7 +2,7 @@ import type { QueryResult } from './drivers';
 import type { EntityMetadata } from './metadata';
 import {
     and, column, count, eq, literal,
-    type QueryPredicate, type QueryValue, type SelectItem, type SelectQuery
+    type MutationQuery, type QueryPredicate, type QueryValue, type SelectItem, type SelectQuery
 } from './query';
 
 type KeyValue = NonNullable<QueryValue>;
@@ -19,6 +19,10 @@ export interface FindAllOptions<Entity> {
     readonly offset?: number;
 }
 
+type Execute = ((query: SelectQuery) => Promise<QueryResult>) & {
+    readonly mutation?: (query: MutationQuery) => Promise<QueryResult>;
+};
+
 const SOURCE_ALIAS = 'entity';
 const COUNT_ALIAS = 'total';
 
@@ -28,8 +32,29 @@ export class Repository<
 > {
     constructor(
         private readonly metadata: EntityMetadata<Entity>,
-        private readonly execute: (query: SelectQuery) => Promise<QueryResult>
+        private readonly execute: Execute
     ) {}
+
+    async save(entity: Partial<Entity>): Promise<Entity> {
+        if (this.execute.mutation === undefined) {
+            throw new Error('Repository requires a mutation executor to save.');
+        }
+        const selections = this.entitySelections().map(selection => ({
+            ...selection, alias: selection.expression.property
+        }));
+        const values = Object.fromEntries(selections.flatMap(({ alias }) => {
+            const value: unknown = Reflect.get(entity, alias);
+            return value === undefined ? [] : [[alias, value]];
+        }));
+        const { rows } = await this.execute.mutation({
+            kind: 'save', entity: this.metadata.target, values
+        });
+        const row = rows[0];
+        if (row === undefined) {
+            throw new Error('Save did not return a row. The entity may no longer exist.');
+        }
+        return this.materialize(row, selections);
+    }
 
     async findById(id: Id): Promise<Entity | null> {
         const where = this.keyPredicate(id);
