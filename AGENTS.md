@@ -395,6 +395,12 @@ Pasaron el build de Core, los tres typecheck y 312 pruebas de Core, 154 del paqu
 
 Validación de extremo a extremo del 23 de noviembre de 2026. La integración pasó por el driver PostgreSQL de TyORM y `pg` contra un servidor TCP temporal de PGlite con la extensión pgvector 0.8.7. Verificó el orden y la distancia de los vecinos para L2 y coseno, y el error de dimensiones incompatibles. El servidor PostgreSQL local sigue sin la extensión. Para reproducir la prueba con una base que ya tenga pgvector habilitado, configurar sus variables PG y ejecutar `pnpm --filter @tyorm/postgres exec vitest run --mode test tests/vector.integration.test.ts`.
 
+### 8.5 Procedimientos almacenados en MySQL
+
+`MySQLDriver.acquireConnection()` devuelve una conexión MySQL que expone `callProcedure(nombre, parametros, esquema?)`. La llamada vincula los parámetros IN, cita el nombre y el esquema, y devuelve los conjuntos de filas en orden y el recuento final de filas afectadas que informa MySQL. En una transacción iniciada en esa conexión, la llamada comparte la sesión y su cola de operaciones. El llamador libera la conexión al finalizar. La API de esta entrega se limita a parámetros IN.
+
+Validación del 23 de noviembre de 2026. Pasaron los cuatro builds y typecheck y 483 pruebas, incluidas dos pruebas nuevas de conexión MySQL. Se omitieron cinco casos de integración y paridad que requieren MYSQL_TEST_DATABASE. La llamada a un procedimiento queda pendiente de validación contra un servidor MySQL.
+
 ## 9. Comandos de validación
 
 Ejecutar desde la raíz del monorepo, confirmando que los scripts existen:
