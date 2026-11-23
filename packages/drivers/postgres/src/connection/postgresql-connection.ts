@@ -20,6 +20,7 @@ export class PostgreSQLConnection implements DatabaseConnection {
   private transactionActive = false;
   private releaseError?: Error;
   private broken = false;
+  private queue = Promise.resolve();
 
   constructor(private readonly client: PoolClient) { }
 
@@ -32,27 +33,29 @@ export class PostgreSQLConnection implements DatabaseConnection {
   async execute<T = Record<string, unknown>>(
     query: Query
   ): Promise<QueryResult<T>> {
-    this.ensureActive();
+    const { sql, parameters } = query;
+    const values = parameters ? [...parameters] : [];
 
-    try {
-      const result = await this.client.query(
-        query.sql,
-        query.parameters ? [...query.parameters] : []
-      );
+    return this.enqueue(async () => {
+      this.ensureActive();
 
-      return {
-        rows: result.rows as T[],
-        affectedRows: result.rowCount,
-        command: result.command
-      };
-    } catch (error) {
-      if (isPostgreSQLConnectionError(error)) {
-        this.broken = true;
-        this.releaseError = this.toError(error);
+      try {
+        const result = await this.client.query(sql, values);
+
+        return {
+          rows: result.rows as T[],
+          affectedRows: result.rowCount,
+          command: result.command
+        };
+      } catch (error) {
+        if (isPostgreSQLConnectionError(error)) {
+          this.broken = true;
+          this.releaseError = this.toError(error);
+        }
+
+        throw error;
       }
-
-      throw error;
-    }
+    });
   }
 
 
@@ -60,75 +63,83 @@ export class PostgreSQLConnection implements DatabaseConnection {
   async beginTransaction(
     options?: TransactionOptions
   ): Promise<void> {
-    this.ensureActive();
+    const { isolationLevel, readOnly } = options ?? {};
 
-    if (this.transactionActive) {
-      throw new Error('A transaction is already active.');
-    }
+    return this.enqueue(async () => {
+      this.ensureActive();
 
-    const isolationLevel = options?.isolationLevel;
+      if (this.transactionActive) {
+        throw new Error('A transaction is already active.');
+      }
 
-    const isolationSql: Record<string, string> = {
-      READ_UNCOMMITTED: 'READ UNCOMMITTED',
-      READ_COMMITTED: 'READ COMMITTED',
-      REPEATABLE_READ: 'REPEATABLE READ',
-      SERIALIZABLE: 'SERIALIZABLE'
-    };
+      const isolationSql: Record<string, string> = {
+        READ_UNCOMMITTED: 'READ UNCOMMITTED',
+        READ_COMMITTED: 'READ COMMITTED',
+        REPEATABLE_READ: 'REPEATABLE READ',
+        SERIALIZABLE: 'SERIALIZABLE'
+      };
 
-    const isolationClause = isolationLevel
-      ? ` ISOLATION LEVEL ${isolationSql[isolationLevel]}`
-      : '';
+      const isolationClause = isolationLevel
+        ? ` ISOLATION LEVEL ${isolationSql[isolationLevel]}`
+        : '';
 
-    if (isolationLevel && !isolationSql[isolationLevel]) {
-      throw new Error(
-        `Unsupported isolation level: ${isolationLevel}`
-      );
-    }
+      if (isolationLevel && !isolationSql[isolationLevel]) {
+        throw new Error(
+          `Unsupported isolation level: ${isolationLevel}`
+        );
+      }
 
-    const readOnlyClause = options?.readOnly
-      ? ' READ ONLY'
-      : '';
+      const readOnlyClause = readOnly
+        ? ' READ ONLY'
+        : '';
 
-    try {
-      await this.client.query(
-        `BEGIN${isolationClause}${readOnlyClause}`
-      );
+      try {
+        await this.client.query(
+          `BEGIN${isolationClause}${readOnlyClause}`
+        );
 
-      this.transactionActive = true;
-    } catch (error) {
-      // No podemos garantizar el estado de la sesión.
-      // La conexión no debe regresar al pool.
-      this.broken = true;
-      this.releaseError = this.toError(error);
+        this.transactionActive = true;
+      } catch (error) {
+        // No podemos garantizar el estado de la sesión.
+        // La conexión no debe regresar al pool.
+        this.broken = true;
+        this.releaseError = this.toError(error);
 
-      throw error;
-    }
+        throw error;
+      }
+    });
   }
 
 
   async commit(): Promise<void> {
-    this.ensureActive();
+    return this.enqueue(async () => {
+      this.ensureActive();
 
-    if (!this.transactionActive) {
-      throw new Error(
-        'There is no active transaction to commit.'
-      );
-    }
+      if (!this.transactionActive) {
+        throw new Error(
+          'There is no active transaction to commit.'
+        );
+      }
 
-    try {
-      await this.client.query('COMMIT');
-      this.transactionActive = false;
-    } catch (error) {
-      // No sabemos si PostgreSQL confirmó la transacción.
-      // Por seguridad, la conexión ya no podrá utilizarse.
-      this.broken = true;
-      this.releaseError = this.toError(error);
+      try {
+        await this.client.query('COMMIT');
+        this.transactionActive = false;
+      } catch (error) {
+        // No sabemos si PostgreSQL confirmó la transacción.
+        // Por seguridad, la conexión ya no podrá utilizarse.
+        this.broken = true;
+        this.releaseError = this.toError(error);
 
-      throw new TransactionOutcomeUnknownError(error);
-    }
+        throw new TransactionOutcomeUnknownError(error);
+      }
+    });
   }
 
-  async rollback(): Promise<void> {
+  rollback(): Promise<void> {
+    return this.enqueue(() => this.rollbackActiveTransaction());
+  }
+
+  private async rollbackActiveTransaction(): Promise<void> {
     this.ensureActive();
 
     if (!this.transactionActive) {
@@ -147,57 +158,66 @@ export class PostgreSQLConnection implements DatabaseConnection {
 
 
   async release(): Promise<void> {
-    if (this.released) {
-      return;
-    }
+    return this.enqueue(async () => {
+      if (this.released) {
+        return;
+      }
 
-    let rollbackFailed = false;
-    let rollbackError: unknown;
+      let rollbackFailed = false;
+      let rollbackError: unknown;
 
-    if (this.transactionActive && !this.broken) {
+      if (this.transactionActive && !this.broken) {
+        try {
+          await this.rollbackActiveTransaction();
+        } catch (error) {
+          rollbackFailed = true;
+          rollbackError = error;
+        }
+      }
+
+      this.released = true;
+
+      let releaseFailed = false;
+      let releaseError: unknown;
+
       try {
-        await this.rollback();
+        if (this.broken) {
+          this.client.release(
+            this.releaseError ??
+            new Error('Database connection is unusable.')
+          );
+        } else {
+          this.client.release();
+        }
       } catch (error) {
-        rollbackFailed = true;
-        rollbackError = error;
+        releaseFailed = true;
+        releaseError = error;
       }
-    }
 
-    this.released = true;
-
-    let releaseFailed = false;
-    let releaseError: unknown;
-
-    try {
-      if (this.broken) {
-        this.client.release(
-          this.releaseError ??
-          new Error('Database connection is unusable.')
+      if (rollbackFailed && releaseFailed) {
+        throw new AggregateError(
+          [rollbackError, releaseError],
+          'ROLLBACK and connection release both failed.'
         );
-      } else {
-        this.client.release();
       }
-    } catch (error) {
-      releaseFailed = true;
-      releaseError = error;
-    }
 
-    if (rollbackFailed && releaseFailed) {
-      throw new AggregateError(
-        [rollbackError, releaseError],
-        'ROLLBACK and connection release both failed.'
-      );
-    }
+      if (rollbackFailed) {
+        throw rollbackError;
+      }
 
-    if (rollbackFailed) {
-      throw rollbackError;
-    }
-
-    if (releaseFailed) {
-      throw releaseError;
-    }
+      if (releaseFailed) {
+        throw releaseError;
+      }
+    });
   }
 
+
+  private enqueue<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.queue.then(operation);
+    // A rejected operation must leave the queue available for rollback and release.
+    this.queue = result.then(() => undefined, () => undefined);
+    return result;
+  }
 
   private ensureActive(): void {
     if (this.released) {

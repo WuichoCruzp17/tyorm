@@ -224,8 +224,14 @@ export class QuerySemanticResolver {
 
         // 3. Resolver referencias a columnas.
         const resolveExpression = (
-            expression: QueryExpression
+            expression: QueryExpression,
+            requiresVector = false
         ): void => {
+
+            if (expression.kind === 'vector-distance') {
+                resolveExpression(expression.column, true);
+                return;
+            }
 
             if (expression.kind === 'aggregate' && expression.argument !== undefined) {
                 resolveExpression(expression.argument);
@@ -265,6 +271,10 @@ export class QuerySemanticResolver {
                     `Unknown property "${expression.property}" ` +
                     `on entity ${metadata.target.name}.`
                 );
+            }
+
+            if (requiresVector && physicalColumn.type !== 'vector') {
+                throw new QuerySemanticError(`Property "${expression.property}" must have type vector.`);
             }
 
             columns.push(
@@ -308,7 +318,7 @@ export class QuerySemanticResolver {
                     resolveExpression(predicate.expression);
 
                     predicate.values.forEach(
-                        resolveExpression
+                        expression => resolveExpression(expression)
                     );
                     return;
 
@@ -339,7 +349,7 @@ export class QuerySemanticResolver {
         }
 
         // 8. GROUP BY.
-        query.groupBy?.forEach(resolveExpression);
+        query.groupBy?.forEach(expression => resolveExpression(expression));
 
         // 9. HAVING.
         if (query.having !== undefined) {

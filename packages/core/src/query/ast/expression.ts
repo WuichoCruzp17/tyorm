@@ -40,7 +40,15 @@ export type AggregateExpression =
         readonly argument: ColumnExpression;
     };
 
+export interface VectorDistanceExpression {
+    readonly kind: 'vector-distance';
+    readonly metric: 'l2' | 'cosine';
+    readonly column: ColumnExpression;
+    readonly vector: readonly number[];
+}
+
 export type QueryExpression =
+    | VectorDistanceExpression
     | AggregateExpression
     | ColumnExpression
     | ParameterExpression
