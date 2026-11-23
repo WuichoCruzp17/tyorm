@@ -4,7 +4,7 @@ import type { DatabaseDriver, DriverConfig, QueryResult, TransactionOptions } fr
 import { TransactionManager } from './transactions';
 import { getEntityMetadata } from './decorators';
 import { OrmMetadataModel, type EntityTarget } from './metadata';
-import { QuerySemanticResolver, resolveMutation, type CompiledQuery, type MutationQuery, type SelectQuery, type SqlCompiler } from './query';
+import { QuerySemanticResolver, resolveMutation, type CompiledQuery, type FunctionCall, type MutationQuery, type ProcedureCall, type SelectQuery, type SqlCompiler } from './query';
 
 export type DriverProvider = () =>
     | { readonly driver: DatabaseDriver; readonly compiler: SqlCompiler }
@@ -16,6 +16,8 @@ export interface DataSourceOptions extends DriverConfig {
 }
 
 export interface TransactionScope {
+    executeFunction(call: FunctionCall): Promise<QueryResult>;
+    executeProcedure(call: ProcedureCall): Promise<QueryResult>;
     executeMutation(query: MutationQuery): Promise<QueryResult>;
     getRepository<Instance extends Repository<object>>(target: EntityTarget<Instance>): Instance;
     getRepository<Entity extends object>(target: EntityTarget<Entity>): Repository<Entity>;
@@ -92,7 +94,9 @@ export class DataSource {
                     query => execute(() => this.compiler.compile(this.resolver.resolve(query))),
                     executeMutation
                 ),
-                executeMutation
+                executeMutation,
+                executeFunction: call => execute(() => this.compileFunction(call)),
+                executeProcedure: call => execute(() => this.compileProcedure(call))
             });
         }, options);
     }
@@ -132,6 +136,30 @@ export class DataSource {
     async executeMutation(query: MutationQuery): Promise<QueryResult> {
         this.assertOpen();
         return this.executeCompiled(this.compileMutation(query));
+    }
+
+    async executeFunction(call: FunctionCall): Promise<QueryResult> {
+        this.assertOpen();
+        return this.executeCompiled(this.compileFunction(call));
+    }
+
+    async executeProcedure(call: ProcedureCall): Promise<QueryResult> {
+        this.assertOpen();
+        return this.executeCompiled(this.compileProcedure(call));
+    }
+
+    private compileProcedure(call: ProcedureCall): CompiledQuery {
+        if (this.compiler.compileProcedure === undefined) {
+            throw new Error('The selected driver does not support SQL procedure calls.');
+        }
+        return this.compiler.compileProcedure(call);
+    }
+
+    private compileFunction(call: FunctionCall): CompiledQuery {
+        if (this.compiler.compileFunction === undefined) {
+            throw new Error('The selected driver does not support SQL function calls.');
+        }
+        return this.compiler.compileFunction(call);
     }
 
     private compileMutation(query: MutationQuery): CompiledQuery {
