@@ -1,3 +1,7 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { Column, DataSource, Entity, PrimaryKey, type EntityTarget } from '@tyorm/core';
 import { expect, it } from 'vitest';
 import { sqliteProvider } from '../src';
@@ -131,5 +135,44 @@ it('upserts by the full composite key and rolls back scoped writes', async () =>
         await expect(repository.count()).resolves.toBe(2n);
     } finally {
         await source.close();
+    }
+});
+
+it('persists committed writes after closing and reopening a database file', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'tyorm-sqlite-'));
+    const database = join(directory, 'persisted.sqlite');
+    const options = {
+        type: 'sqlite', database, entities: [Setting], providers: { sqlite: sqliteProvider }
+    };
+    const key = { tenant: 1, key: 'locale' };
+
+    try {
+        const setup = new DatabaseSync(database);
+        try {
+            setup.exec(
+                'CREATE TABLE settings (tenant_id INTEGER NOT NULL, setting_key TEXT NOT NULL, setting_value TEXT NOT NULL, PRIMARY KEY (tenant_id, setting_key))'
+            );
+        } finally {
+            setup.close();
+        }
+
+        const source = await DataSource.connect(options);
+        try {
+            await source.transaction(scope =>
+                scope.getRepository(Setting).save({ ...key, value: 'es' })
+            );
+        } finally {
+            await source.close();
+        }
+
+        const reopened = await DataSource.connect(options);
+        try {
+            await expect(reopened.getRepository(Setting).findById(key))
+                .resolves.toMatchObject({ ...key, value: 'es' });
+        } finally {
+            await reopened.close();
+        }
+    } finally {
+        rmSync(directory, { recursive: true, force: true });
     }
 });
