@@ -1,13 +1,13 @@
 # TyORM
 
-TyORM is a TypeScript ORM inspired by Java Persistence API (JPA). It combines decorator-based entity metadata with an explicit query API for building parameterized SQL. PostgreSQL is the current driver. Database-independent query semantics, relationship resolution, projections, and transaction orchestration live in Core.
+TyORM is a TypeScript ORM inspired by Java Persistence API (JPA). It combines decorator-based entity metadata with an explicit query API for building parameterized SQL. Use the PostgreSQL provider to connect through `DataSource`, query registered entities, and write through repositories. Database-independent query semantics, relationship resolution, projections, and transaction orchestration live in Core.
 
 ## Packages and architecture
 
 | Package | Responsibilities |
 | --- | --- |
-| [`@tyorm/core`](packages/core) | Entity and relation decorators, metadata registry and validation, query AST and builders, semantic resolution, projection APIs, transaction management, and driver contracts. |
-| [`@tyorm/postgres`](packages/drivers/postgres) | PostgreSQL SQL compilation, identifier quoting and parameter placeholders, connection pooling through `pg`, and PostgreSQL transaction and error handling. |
+| [`@tyorm/core`](packages/core) | Entity and relation decorators, metadata registry and validation, query AST and builders, semantic resolution, projection APIs, DataSource, repositories, transaction management, and driver contracts. |
+| [`@tyorm/postgres`](packages/drivers/postgres) | The PostgreSQL provider, SELECT and mutation compilation, connection pooling through `pg`, and PostgreSQL transaction and error handling. |
 
 ### Metadata and relationships
 
@@ -63,7 +63,7 @@ The guide creates and seeds temporary tables, prints compiled SQL and query resu
 
 ## Usage examples
 
-The following snippets share the same entities, resolver, compiler, and driver. They assume your PostgreSQL schema already contains `departments(department_id, name)` and `employees(employee_id, display_name, department_fk)`. The runnable guide creates its own sample schema using temporary tables.
+The following snippets build on the same entity declarations and DataSource. They assume your PostgreSQL schema already contains `departments(department_id, name)` and `employees(employee_id, display_name, department_fk)`. The runnable guide creates its own sample schema using temporary tables.
 
 ### Define and register entities
 
@@ -105,13 +105,24 @@ const resolver = new QuerySemanticResolver(new OrmMetadataModel([
 ]));
 ```
 
-### Compile and execute a SELECT
+### Connect and execute a SELECT
 
-`column('e', 'name')` uses the TypeScript property name. The resolver looks up the physical column `display_name`. The compiler binds the filter and pagination values, and the connection lease is released in `finally`.
+`column('e', 'name')` uses the TypeScript property name. The resolver looks up the physical column `display_name`. `DataSource` loads the provider registered for the configured engine, resolves the query, and executes it with bound parameters. It acquires and releases a connection for each standalone query.
 
 ```ts
-import { column, eq, param, type SelectQuery } from '@tyorm/core';
-import { PostgreSQLDriver, PostgresSelectCompiler } from '@tyorm/postgres';
+import { DataSource, column, eq, param, type SelectQuery } from '@tyorm/core';
+
+const password = process.env.PGPASSWORD;
+const db = await DataSource.connect({
+    type: 'postgres',
+    providers: { postgres: async () => (await import('@tyorm/postgres')).postgresProvider() },
+    entities: [Department, Employee],
+    host: process.env.PGHOST ?? 'localhost',
+    port: Number(process.env.PGPORT ?? 5432),
+    database: process.env.PGDATABASE ?? 'tyorm_test',
+    username: process.env.PGUSER ?? 'postgres',
+    ...(password === undefined ? {} : { password })
+});
 
 const employeeId = column('e', 'id');
 const employeeName = column('e', 'name');
@@ -137,32 +148,11 @@ const query: SelectQuery = {
     distinct: false
 };
 
-const compiler = new PostgresSelectCompiler();
-const compiled = compiler.compile(resolver.resolve(query), { departmentId: 1 });
-
-const driver = new PostgreSQLDriver();
-const password = process.env.PGPASSWORD;
-await driver.connect({
-    type: 'postgres',
-    host: process.env.PGHOST ?? 'localhost',
-    port: Number(process.env.PGPORT ?? 5432),
-    database: process.env.PGDATABASE ?? 'tyorm_test',
-    username: process.env.PGUSER ?? 'postgres',
-    ...(password === undefined ? {} : { password })
-});
-
-try {
-    const connection = await driver.acquireConnection();
-    try {
-        const { rows } = await connection.execute(compiled);
-        console.table(rows);
-    } finally {
-        await connection.release();
-    }
-} finally {
-    await driver.disconnect();
-}
+const { rows } = await db.execute(query, { departmentId: 1 });
+console.table(rows);
 ```
+
+Keep `db` open for the remaining examples and call `await db.close()` in your application's cleanup path.
 
 ### Group and filter results
 
@@ -185,7 +175,7 @@ const groupedQuery: SelectQuery = {
     orderBy: [{ expression: total, direction: 'desc' }]
 };
 
-const groupedSql = compiler.compile(resolver.resolve(groupedQuery), {
+const { rows: departmentTotals } = await db.execute(groupedQuery, {
     departmentId: 1,
     minimum: 2
 });
@@ -193,13 +183,16 @@ const groupedSql = compiler.compile(resolver.resolve(groupedQuery), {
 
 ### Map rows to automatic projections, DTOs, or records
 
-The three APIs take a query and a map of aliases to expressions. They use this map to build the SELECT list. Automatic projections infer the alias keys and expose the raw values as `unknown`. DTO projections call a mapper for each row. A record schema defines reusable field decoders and returns a frozen object per row.
+The three APIs take a query and a map of aliases to expressions. They use this map to build the SELECT list. Automatic projections infer the alias keys and expose the raw values as `unknown`. DTO projections call a mapper for each row. A record schema defines reusable field decoders and returns a frozen object per row. These APIs accept an executor for compiled SQL, such as a connection lease supplied by a connected driver.
 
 ```ts
 import {
     defineRecord, executeDtoQuery, executeProjectionQuery, executeRecordQuery,
     type DatabaseConnection
 } from '@tyorm/core';
+import { PostgresSelectCompiler } from '@tyorm/postgres';
+
+const compiler = new PostgresSelectCompiler();
 
 class EmployeeDto {
     constructor(readonly name: string) {}
@@ -235,31 +228,14 @@ async function projectEmployees(connection: DatabaseConnection) {
 }
 ```
 
-### Run queries in a transaction
+### Read entities through repositories
 
-Use a connected driver. `transaction` passes a connection lease to the callback, commits on success, and rolls back an active transaction when the callback fails. The manager releases the lease and preserves the original error. If rollback or release also fails, `TransactionError` carries the original and cleanup errors.
+Get a repository for any registered entity with `db.getRepository(Entity)`. Repository reads hydrate scalar columns into entity instances using the entity prototype. Constructors and relation loading are bypassed. `findById` returns `null` when the key is absent, `existsById` returns a boolean, and `count` returns a `bigint`. Pass a single primary key as a scalar or a composite key as an object containing every key property. When paginating with `findAll`, the repository adds any missing primary-key columns to the sort order as tie-breakers.
 
-`withContext` tracks outstanding operations and waits for them before the transaction completes. Both forms can execute parameterized SQL or a compiled TyORM query.
-
-```ts
-import { TransactionManager } from '@tyorm/core';
-
-async function readDepartmentTotals(connectedDriver: PostgreSQLDriver) {
-    const transactions = new TransactionManager(connectedDriver);
-
-    return transactions.withContext(async context => {
-        const { rows } = await context.execute(groupedSql);
-        return rows;
-    }, { isolationLevel: 'READ_COMMITTED' });
-}
-```
-
-### Declare a custom repository
-
-Use a decorated subclass to add methods alongside `findById`, `findAll`, `existsById`, and `count`. Register `Employee` in the DataSource configuration. The second type parameter specifies the ID type.
+A decorated repository can add methods while inheriting the standard operations. Register its entity in `DataSource`. The second type parameter specifies the ID type.
 
 ```ts
-import { ReadRepository, RepositoryDecorator as Repository, eq, literal } from '@tyorm/core';
+import { ReadRepository, RepositoryDecorator as Repository, literal } from '@tyorm/core';
 
 @Repository(Employee)
 class EmployeeRepository extends ReadRepository<Employee, number> {
@@ -268,16 +244,55 @@ class EmployeeRepository extends ReadRepository<Employee, number> {
     }
 }
 
-// With a connected DataSource named db
 const employees = db.getRepository(EmployeeRepository);
 const matches = await employees.findByName('Ada');
+const page = await employees.findAll({ orderBy: { name: 'asc' }, limit: 10, offset: 0 });
+const employeeCount = await employees.count();
+```
+
+### Use repositories in a transaction
+
+Get repositories from the callback scope so that they share the transaction's connection. The manager waits for pending SQL operations, commits on success or rolls back on failure, and releases the connection afterward. Repositories obtained from the scope can execute queries only while the callback is active.
+
+```ts
+const department = await db.transaction(async scope => {
+    const departments = scope.getRepository(Department);
+    return departments.findById(1);
+}, { isolationLevel: 'READ_COMMITTED', readOnly: true });
+```
+
+For compiled queries or parameterized SQL, `TransactionManager.transaction` supplies the connection directly and `TransactionManager.withContext` supplies a managed executor that tracks pending SQL operations. If rollback or release also fails, `TransactionError` carries the original and cleanup errors.
+
+### Save an entity or execute an explicit mutation
+
+`save` returns a new entity instance with the persisted scalar fields, including values generated by the database. The input object is preserved. With database-generated keys, omitting the generated values inserts a row. Supplying a generated key requires the complete primary key and at least one updatable field, and fails if the row is absent. With application-assigned keys, provide every key component and the required insert fields. PostgreSQL uses an atomic upsert and applies the supplied updatable fields on conflict. When concurrent saves update the same field, the last effective update wins.
+
+Use `executeMutation` when you want to choose `insert`, `update`, or `delete` explicitly. Mutations use entity property names and bound values. Updates and deletes require the complete primary key as an object, including for single-column keys. Explicit updates with no matching row return an empty `rows` array and an `affectedRows` count of zero in PostgreSQL.
+
+```ts
+const savedDepartment = await db.transaction(async scope => {
+    const departments = scope.getRepository(Department);
+
+    // Choose a key reserved for this example in your database.
+    const saved = await departments.save({ id: 100, name: 'Research' });
+
+    const { rows: updated } = await scope.executeMutation({
+        kind: 'update',
+        entity: Department,
+        key: { id: saved.id },
+        values: { name: 'Research and Development' }
+    });
+    console.table(updated);
+    return departments.findById(saved.id);
+});
 ```
 
 ## Driver extension points
 
+- `DriverProvider` creates a compatible driver and compiler for the engine selected by DataSource.
 - `DatabaseDriver` manages the pool lifecycle and acquires connection leases.
 - `DatabaseConnection` executes parameterized SQL and exposes transaction and release operations.
-- `SqlCompiler` translates a resolved query into a `CompiledQuery` with SQL and ordered parameters.
+- `SqlCompiler` translates a resolved SELECT into a `CompiledQuery` with SQL and ordered parameters. Providers that support writes also implement `compileMutation`.
 - `SqlDialect` defines identifier quoting and parameter placeholders.
 
 A second database backend can implement these contracts while reusing the metadata model, query builders, semantic resolver, projections, and transaction manager. See the [Core contracts](packages/core/src/drivers/contracts), [compiler contracts](packages/core/src/query/compiler), and [PostgreSQL implementation](packages/drivers/postgres/src).
