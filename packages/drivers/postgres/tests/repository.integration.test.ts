@@ -30,13 +30,22 @@ class PgAttribute {
     name!: string;
 }
 
+@Entity({ schema: 'pg_catalog', name: 'pg_settings' })
+class PgSetting {
+    @PrimaryKey({ type: 'string', name: 'name' })
+    name!: string;
+
+    @Column({ type: 'string', name: 'setting' })
+    value!: string;
+}
+
 describe('PostgreSQL read repositories', () => {
     it('queries the catalog with simple and composite keys', async () => {
         const password = process.env.PGPASSWORD;
         const source = await DataSource.connect({
             type: 'postgres',
             providers: { postgres: postgresProvider },
-            entities: [PgType, PgAttribute],
+            entities: [PgType, PgAttribute, PgSetting],
             host: process.env.PGHOST ?? 'localhost',
             port: Number(process.env.PGPORT ?? 5432),
             database: process.env.PGDATABASE ?? 'tyorm_test',
@@ -59,6 +68,24 @@ describe('PostgreSQL read repositories', () => {
             const custom = source.getRepository(PgTypeRepository);
             await expect(custom.findByName(first.name)).resolves.toContainEqual(first);
             await expect(custom.findById(first.id)).resolves.toEqual(first);
+
+            const scoped = await source.transaction(async scope => {
+                const repository = scope.getRepository(PgTypeRepository);
+                await expect(repository.findByName(first.name)).resolves.toContainEqual(first);
+                await expect(scope.getRepository(PgType).findById(first.id)).resolves.toEqual(first);
+                const settings = scope.getRepository(PgSetting);
+                await expect(settings.findById('transaction_isolation')).resolves.toMatchObject({ value: 'serializable' });
+                await expect(settings.findById('transaction_read_only')).resolves.toMatchObject({ value: 'on' });
+                return repository;
+            }, { isolationLevel: 'SERIALIZABLE', readOnly: true });
+            await expect(scoped.findById(first.id)).rejects.toThrow('TransactionContext is no longer active.');
+
+            const failure = new Error('Abort transaction');
+            await expect(source.transaction(async scope => {
+                await expect(scope.getRepository(PgType).findById(first.id)).resolves.toEqual(first);
+                throw failure;
+            })).rejects.toBe(failure);
+            await expect(types.findById(first.id)).resolves.toEqual(first);
 
             const attributes = source.getRepository(PgAttribute);
             const [attribute] = await attributes.findAll({ limit: 1 });

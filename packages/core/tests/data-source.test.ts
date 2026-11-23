@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-    DataSource, Entity, PrimaryKey, column, type DatabaseConnection,
+    DataSource, Entity, PrimaryKey, ReadRepository, RepositoryDecorator, column, type DatabaseConnection,
     type DatabaseDriver, type SelectQuery, type SqlCompiler
 } from '../src';
 
@@ -8,6 +8,13 @@ import {
 class User {
     @PrimaryKey({ type: 'integer', name: 'user_id' })
     id!: number;
+}
+
+@RepositoryDecorator(User)
+class UserRepository extends ReadRepository<User, number> {
+    findOne(id: number): Promise<User | null> {
+        return this.findById(id);
+    }
 }
 
 const query: SelectQuery = {
@@ -109,6 +116,44 @@ describe('DataSource', () => {
         await source.close();
     });
 
+    it('uses one connection for entity and custom repositories and closes their executor before commit', async () => {
+        const { options, driver, connection, execute, compile } = fixture();
+        const source = await DataSource.connect(options);
+
+        const repository = await source.transaction(async scope => {
+            const custom = scope.getRepository(UserRepository);
+            await expect(custom.findOne(1)).resolves.toBeNull();
+            await expect(scope.getRepository(User).findAll()).resolves.toEqual([]);
+            expect(connection.release).not.toHaveBeenCalled();
+            return custom;
+        }, { readOnly: true });
+
+        expect(driver.acquireConnection).toHaveBeenCalledOnce();
+        expect(connection.beginTransaction).toHaveBeenCalledExactlyOnceWith({ readOnly: true });
+        expect(execute).toHaveBeenCalledTimes(2);
+        expect(connection.commit).toHaveBeenCalledOnce();
+        expect(connection.release).toHaveBeenCalledOnce();
+        await expect(repository.findOne(1)).rejects.toThrow('TransactionContext is no longer active.');
+        expect(compile).toHaveBeenCalledTimes(2);
+        await source.close();
+    });
+
+    it('rolls back after a repository query fails even if the callback handles the error', async () => {
+        const { options, connection, execute } = fixture();
+        const source = await DataSource.connect(options);
+        const original = new Error('Query failed');
+        execute.mockRejectedValueOnce(original);
+
+        await expect(source.transaction(async scope => {
+            await expect(scope.getRepository(User).findAll()).rejects.toBe(original);
+        })).rejects.toMatchObject({ errors: [original] });
+
+        expect(connection.rollback).toHaveBeenCalledOnce();
+        expect(connection.commit).not.toHaveBeenCalled();
+        expect(connection.release).toHaveBeenCalledOnce();
+        await source.close();
+    });
+
     it('closes once and rejects execution after closing begins', async () => {
         const { options, driver } = fixture();
         const source = await DataSource.connect(options);
@@ -116,6 +161,7 @@ describe('DataSource', () => {
 
         expect(source.close()).toBe(close);
         await expect(source.execute(query)).rejects.toThrow('DataSource is closing or closed.');
+        await expect(source.transaction(async () => undefined)).rejects.toThrow('DataSource is closing or closed.');
         await close;
         expect(driver.disconnect).toHaveBeenCalledOnce();
         expect(driver.acquireConnection).not.toHaveBeenCalled();

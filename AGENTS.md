@@ -287,7 +287,7 @@ Validación del 20 de noviembre de 2026. Pasaron ambos typecheck, el typecheck d
 5. **5.2.2.7:** GROUP BY completado y validado según la sección 7.4. HAVING quedó completado en la **fase 5.2.2.8** según la sección 7.5. Las funciones agregadas quedaron completadas en la **fase 5.2.2.9** según la sección 7.6.
 6. DTO explícitos completados y validados según la sección 7.7. Proyecciones automáticas validadas según la sección 7.8. API de consultas tipo records validada según la sección 7.9.
 7. Compatibilidad de decoradores legacy completada y validada según la sección 7.10.
-8. **Fase 8.1:** arranque y repositorios de lectura completados. Sigue la entrega C de repositorios transaccionales.
+8. **Fase 8.1:** arranque, repositorios de lectura y repositorios transaccionales completados. Sigue la entrega D de escritura y semántica de save.
 9. Ampliar a un segundo motor tras estabilizar el contrato del proveedor.
 10. Mantener/regresar a pruebas de integración PostgreSQL, especialmente comportamiento tras errores SQL y consultas pendientes en una transacción.
 
@@ -337,6 +337,12 @@ Validación del 20 de noviembre de 2026. Pasaron el build, ambos typecheck, el c
 `RepositoryDecorator`, importable como `Repository`, asocia una subclase de `ReadRepository<Entity, Id>` con una entidad registrada. `DataSource.getRepository` devuelve la subclase y conserva el acceso directo por entidad. La exportación existente `Repository` sigue siendo la clase base. Los métodos personalizados pueden usar `this.column` y `findAll({ where })` para conservar la resolución de metadatos, el enlace de parámetros y la hidratación.
 
 Validación del 20 de noviembre de 2026. Pasaron el build, ambos typecheck, el chequeo estricto de las pruebas modificadas, 306 pruebas de Core y 119 de PostgreSQL. La integración ejecutó un método propio y uno heredado. Las otras tres suites de integración de PostgreSQL quedaron fuera de esta ejecución.
+
+#### Entrega C completada — Repositorios en transacciones
+
+`DataSource.transaction(callback, options)` entrega un `TransactionScope` con `getRepository` para entidades registradas y repositorios personalizados. Todos los repositorios del alcance ejecutan sus consultas en el mismo contexto administrado de `TransactionManager`. El contexto cierra el alcance y espera las operaciones en curso antes de finalizar la transacción. Las consultas de repositorios retenidos fuera del alcance se rechazan.
+
+Validación del 23 de noviembre de 2026. Pasaron el build de Core, ambos typecheck, el typecheck de pruebas de Core, 308 pruebas de Core y 139 de PostgreSQL. Las pruebas unitarias comprobaron la conexión compartida, el commit, el rollback ante un error SQL y la liberación. La integración de repositorios confirmó el aislamiento serializable y el modo de solo lectura en PostgreSQL, además de comprobar el rechazo de consultas fuera del alcance y la recuperación tras abortar el callback.
 
 ## 9. Comandos de validación
 

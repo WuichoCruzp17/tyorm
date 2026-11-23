@@ -1,6 +1,7 @@
 import { Repository } from './repository';
 import { createDecoratedRepository } from './repository-decorator';
-import type { DatabaseDriver, DriverConfig, QueryResult } from './drivers';
+import type { DatabaseDriver, DriverConfig, QueryResult, TransactionOptions } from './drivers';
+import { TransactionManager } from './transactions';
 import { getEntityMetadata } from './decorators';
 import { OrmMetadataModel, type EntityTarget } from './metadata';
 import { QuerySemanticResolver, type SelectQuery, type SqlCompiler } from './query';
@@ -12,6 +13,11 @@ export type DriverProvider = () =>
 export interface DataSourceOptions extends DriverConfig {
     readonly entities: readonly EntityTarget[];
     readonly providers: Readonly<Record<string, DriverProvider>>;
+}
+
+export interface TransactionScope {
+    getRepository<Instance extends Repository<object>>(target: EntityTarget<Instance>): Instance;
+    getRepository<Entity extends object>(target: EntityTarget<Entity>): Repository<Entity>;
 }
 
 export class DataSource {
@@ -58,24 +64,50 @@ export class DataSource {
     getRepository<Instance extends Repository<object>>(target: EntityTarget<Instance>): Instance;
     getRepository<Entity extends object>(target: EntityTarget<Entity>): Repository<Entity>;
     getRepository(target: EntityTarget): object {
-        const execute = (query: SelectQuery) => this.execute(query);
-        const custom = createDecoratedRepository(target, this.model, execute);
-        if (custom !== undefined) {
-            return custom;
+        return this.repositoryScope(query => this.execute(query)).getRepository(target);
+    }
+
+    async transaction<T>(
+        callback: (scope: TransactionScope) => Promise<T>,
+        options?: TransactionOptions
+    ): Promise<T> {
+        this.assertOpen();
+
+        return new TransactionManager(this.driver).withContext(context => {
+            const execute = async (query: SelectQuery): Promise<QueryResult> => {
+                if (!context.isActive) {
+                    throw new Error('TransactionContext is no longer active.');
+                }
+                return context.execute(this.compiler.compile(this.resolver.resolve(query)));
+            };
+            return callback(this.repositoryScope(execute));
+        }, options);
+    }
+
+    private repositoryScope(execute: (query: SelectQuery) => Promise<QueryResult>): TransactionScope {
+        const model = this.model;
+
+        function getRepository<Instance extends Repository<object>>(target: EntityTarget<Instance>): Instance;
+        function getRepository<Entity extends object>(target: EntityTarget<Entity>): Repository<Entity>;
+        function getRepository(target: EntityTarget): object {
+            const custom = createDecoratedRepository(target, model, execute);
+            if (custom !== undefined) {
+                return custom;
+            }
+            if (target.prototype instanceof Repository) {
+                throw new Error(`Repository "${target.name}" must declare @Repository.`);
+            }
+            return new Repository(model.getEntity(target).entity, execute);
         }
-        if (target.prototype instanceof Repository) {
-            throw new Error(`Repository "${target.name}" must declare @Repository.`);
-        }
-        return new Repository(this.model.getEntity(target).entity, execute);
+
+        return { getRepository };
     }
 
     async execute(
         query: SelectQuery,
         parameters?: Readonly<Record<string, unknown>>
     ): Promise<QueryResult> {
-        if (this.closing !== undefined) {
-            throw new Error('DataSource is closing or closed.');
-        }
+        this.assertOpen();
 
         const compiled = this.compiler.compile(this.resolver.resolve(query), parameters);
         const connection = await this.driver.acquireConnection();
@@ -93,6 +125,12 @@ export class DataSource {
 
         await connection.release();
         return result;
+    }
+
+    private assertOpen(): void {
+        if (this.closing !== undefined) {
+            throw new Error('DataSource is closing or closed.');
+        }
     }
 
     close(): Promise<void> {
