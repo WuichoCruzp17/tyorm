@@ -303,3 +303,28 @@ describe('PostgreSQLConnection - Transaction failures', () => {
   });
 
 });
+
+it('serializes pending queries, commit and release on one pg client', async () => {
+  const { client, query, release } = createMockClient();
+  const connection = new PostgreSQLConnection(client);
+  const result = { rows: [], rowCount: 0, command: 'SELECT' };
+  let finishFirst!: () => void;
+  query.mockResolvedValue(result).mockResolvedValueOnce({ command: 'BEGIN' })
+    .mockImplementationOnce(() => new Promise<void>(resolve => { finishFirst = resolve; }).then(() => result));
+
+  await connection.beginTransaction();
+  const first = connection.execute({ sql: 'SELECT 1' });
+  const second = connection.execute({ sql: 'SELECT 2' });
+  const commit = connection.commit();
+  const released = connection.release();
+  const afterRelease = expect(connection.execute({ sql: 'SELECT 3' })).rejects.toThrow('already been released');
+
+  await Promise.resolve();
+  expect(query.mock.calls).toEqual([['BEGIN'], ['SELECT 1', []]]);
+  expect(release).not.toHaveBeenCalled();
+
+  finishFirst();
+  await Promise.all([first, second, commit, released, afterRelease]);
+  expect(query.mock.calls).toEqual([['BEGIN'], ['SELECT 1', []], ['SELECT 2', []], ['COMMIT']]);
+  expect(release).toHaveBeenCalledOnce();
+});

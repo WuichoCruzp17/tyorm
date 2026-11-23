@@ -24,7 +24,8 @@ const COLUMN_TYPES: ReadonlySet<ColumnType> = new Set([
     'datetime',
     'uuid',
     'json',
-    'binary'
+    'binary',
+    'vector'
 ]);
 
 export class MetadataRegistry {

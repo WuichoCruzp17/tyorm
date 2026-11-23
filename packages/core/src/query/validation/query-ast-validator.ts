@@ -126,6 +126,26 @@ export class QueryAstValidator {
                     identifier(node.property, 'column property');
                     return;
 
+                case 'vector-distance': {
+                    if (node.metric !== 'l2' && node.metric !== 'cosine') {
+                        throw new QueryAstError('Unknown vector distance metric.');
+                    }
+                    if (record(node.column).kind !== 'column') {
+                        throw new QueryAstError('Vector distance requires a column.');
+                    }
+                    this.validateExpression(node.column);
+                    if (!Array.isArray(node.vector) || node.vector.length === 0 ||
+                        !Array.from(node.vector).every(value =>
+                            typeof value === 'number' && Number.isFinite(Math.fround(value))
+                        )) {
+                        throw new QueryAstError('Vector requires finite single-precision numeric components.');
+                    }
+                    if (node.metric === 'cosine' && node.vector.every(value => Math.fround(value) === 0)) {
+                        throw new QueryAstError('Cosine distance requires a nonzero query vector.');
+                    }
+                    return;
+                }
+
                 case 'aggregate': {
                     if (!AGGREGATES.has(node.function)) {
                         throw new QueryAstError('Unknown aggregate function.');
@@ -350,7 +370,8 @@ export class QueryAstValidator {
                     hasAggregate = true;
                 }
 
-                const column = value.kind === 'aggregate' ? value.argument : value;
+                const column = value.kind === 'aggregate' ? value.argument
+                    : value.kind === 'vector-distance' ? value.column : value;
                 if (column?.kind === 'column' && !aliases.has(column.alias)) {
                     throw new QueryAstError(`Unknown column alias: ${column.alias}.`);
                 }
