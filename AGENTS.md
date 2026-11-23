@@ -288,7 +288,7 @@ Validación del 20 de noviembre de 2026. Pasaron ambos typecheck, el typecheck d
 6. DTO explícitos completados y validados según la sección 7.7. Proyecciones automáticas validadas según la sección 7.8. API de consultas tipo records validada según la sección 7.9.
 7. Compatibilidad de decoradores legacy completada y validada según la sección 7.10.
 8. **Fase 8.1:** arranque, repositorios de lectura, repositorios transaccionales y escritura con save completados.
-9. Ampliar a un segundo motor tras estabilizar el contrato del proveedor.
+9. **Segundo motor:** proveedor SQLite de lectura implementado. Sigue la compilación de escrituras y la validación de paridad con PostgreSQL.
 10. Mantener/regresar a pruebas de integración PostgreSQL, especialmente comportamiento tras errores SQL y consultas pendientes en una transacción.
 
 ### 8.1 Próxima fase — DataSource y repositorios
@@ -357,6 +357,14 @@ Validación del 23 de noviembre de 2026. Pasaron ambos builds y typecheck, el ty
 - Las escrituras concurrentes con clave asignada se resuelven por la restricción de clave primaria. Las columnas escritas por ambas operaciones conservan el valor de la última actualización efectiva. El nivel de aislamiento configurado rige la transacción y los errores de serialización se propagan al llamador.
 
 Validación del 23 de noviembre de 2026. Pasaron ambos builds y typecheck, el typecheck de pruebas de Core, 312 pruebas de Core y 143 de PostgreSQL. La integración verificó los dos tipos de clave, la devolución de una entidad nueva, el rollback de un repositorio personalizado y dos guardados de la misma clave desde transacciones concurrentes en READ COMMITTED.
+
+### 8.2 Segundo motor — SQLite
+
+El paquete `@tyorm/sqlite` exporta `sqliteProvider` y usa `node:sqlite` con Node 22.16 o posterior dentro de la rama 22, o Node 24 en adelante. El proveedor se registra en `DataSource` con `sqlite: async () => (await import('@tyorm/sqlite')).sqliteProvider()`. La opción `database` admite una ruta o `:memory:`.
+
+El compilador traduce SELECT, predicados, JOIN directos y de tabla intermedia, agrupación, agregados y paginación. El driver usa una conexión SQLite síncrona y serializa los préstamos para que una transacción mantenga el acceso exclusivo. Admite el aislamiento predeterminado de SQLite o `SERIALIZABLE` y revierte cualquier transacción abierta antes de liberar el préstamo. La escritura mediante `executeMutation` y `Repository.save` queda pendiente para SQLite.
+
+Validación del 23 de noviembre de 2026 con Node 26.13. Pasaron el build de SQLite, los tres typecheck y 312 pruebas de Core, 143 de PostgreSQL y 3 de SQLite. En SQLite se verificaron la selección del proveedor, las lecturas transaccionales, la espera de otra conexión, el rollback al liberar, la conservación de enteros de 64 bits y la paginación con solo desplazamiento.
 
 ## 9. Comandos de validación
 
