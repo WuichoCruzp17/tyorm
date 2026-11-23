@@ -111,6 +111,52 @@ it.skipIf(!database)('reads and writes repositories through DataSource on MySQL'
     }
 });
 
+it.skipIf(!database)('calls a stored procedure on a MySQL transaction session', async () => {
+    if (!database) throw new Error('MYSQL_TEST_DATABASE is required.');
+    const { driver } = await mysqlProvider();
+    const password = process.env.MYSQL_TEST_PASSWORD;
+
+    await driver.connect({
+        type: 'mysql', database,
+        host: process.env.MYSQL_TEST_HOST ?? '127.0.0.1',
+        port: Number(process.env.MYSQL_TEST_PORT ?? 3306),
+        username: process.env.MYSQL_TEST_USER ?? 'root',
+        ...(password === undefined ? {} : { password })
+    });
+
+    const connection = await driver.acquireConnection();
+    try {
+        await connection.execute({
+            sql: 'DROP PROCEDURE IF EXISTS tyorm_mysql_read_values'
+        });
+        await connection.execute({
+            sql: 'CREATE PROCEDURE tyorm_mysql_read_values(IN input_value VARCHAR(50), IN total_value INT) BEGIN SELECT input_value AS value, total_value AS total; SELECT total_value + 1 AS next_total; END'
+        });
+
+        await connection.beginTransaction();
+        await expect(connection.callProcedure(
+            'tyorm_mysql_read_values',
+            ["O'Reilly", 2]
+        )).resolves.toEqual({
+            resultSets: [
+                [{ value: "O'Reilly", total: 2 }],
+                [{ next_total: 3 }]
+            ],
+            affectedRows: 0
+        });
+        await connection.commit();
+    } finally {
+        try {
+            await connection.execute({
+                sql: 'DROP PROCEDURE IF EXISTS tyorm_mysql_read_values'
+            });
+        } finally {
+            await connection.release();
+            await driver.disconnect();
+        }
+    }
+});
+
 @Entity({ name: 'tyorm_mysql_concurrent' })
 class ConcurrentItem {
     @PrimaryKey({ type: 'string' })

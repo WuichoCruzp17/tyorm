@@ -40,6 +40,20 @@ it('calls a qualified procedure with bound inputs and preserves each result set'
     expect(execute).toHaveBeenNthCalledWith(2, 'CALL `refresh`()', []);
 });
 
+it('uses the text protocol for procedure DDL', async () => {
+    const query = vi.fn().mockResolvedValueOnce([{ affectedRows: 0 }]);
+    const execute = vi.fn();
+    const connection = new MySQLConnection({
+        query,
+        execute
+    } as unknown as PoolConnection);
+    const sql = 'CREATE PROCEDURE refresh() BEGIN SELECT 1; END';
+
+    await expect(connection.execute({ sql })).resolves.toEqual({ rows: [], affectedRows: 0 });
+    expect(query).toHaveBeenCalledWith(sql);
+    expect(execute).not.toHaveBeenCalled();
+});
+
 it('queues a procedure on the active transaction and preserves its failure', async () => {
     const failure = new Error('procedure failed');
     const events: string[] = [];

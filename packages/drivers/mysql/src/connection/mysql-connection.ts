@@ -57,6 +57,12 @@ export class MySQLConnection implements DatabaseConnection {
     }
 
     private async executeStatement<T>({ sql, parameters }: Query): Promise<QueryResult<T>> {
+        if ((parameters?.length ?? 0) === 0 && /^(?:CREATE|DROP)\s+(?:PROCEDURE|FUNCTION|TRIGGER)\b/i.test(sql.trim())) {
+            const [result] = await this.client.query<RowDataPacket[] | ResultSetHeader>(sql);
+            return Array.isArray(result)
+                ? { rows: result as T[], affectedRows: null }
+                : { rows: [], affectedRows: result.affectedRows };
+        }
         const [result] = await this.client.execute<RowDataPacket[] | ResultSetHeader>(
             sql, (parameters ?? []).map(toMySQLValue)
         );

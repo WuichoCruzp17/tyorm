@@ -401,6 +401,8 @@ Validación de extremo a extremo del 23 de noviembre de 2026. La integración pa
 
 Validación del 23 de noviembre de 2026. Pasaron los cuatro builds y typecheck y 483 pruebas, incluidas dos pruebas nuevas de conexión MySQL. Se omitieron cinco casos de integración y paridad que requieren MYSQL_TEST_DATABASE. La llamada a un procedimiento queda pendiente de validación contra un servidor MySQL.
 
+Validación real completada el 23 de noviembre de 2026. La suite de MySQL pasó 12 pruebas contra MySQL local con `tyorm_test`, incluidas la creación y ejecución de un procedimiento dentro de una transacción y la limpieza del procedimiento. La conexión usa el protocolo textual para DDL de rutinas y conserva `callProcedure` con parámetros vinculados dentro de la cola transaccional.
+
 ## 9. Comandos de validación
 
 Ejecutar desde la raíz del monorepo, confirmando que los scripts existen:

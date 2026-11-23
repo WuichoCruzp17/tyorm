@@ -387,5 +387,6 @@ pnpm --filter @tyorm/postgres exec vitest run --mode test --exclude '**/*.integr
 ```
 
 Set `MYSQL_TEST_DATABASE` to a dedicated MySQL test database to include MySQL integration and cross-provider parity. The test user needs permission to create tables and temporary tables. Optional connection settings are `MYSQL_TEST_HOST`, `MYSQL_TEST_PORT`, `MYSQL_TEST_USER`, and `MYSQL_TEST_PASSWORD`.
+The MySQL driver's [`.env.test`](packages/drivers/mysql/.env.test) template is loaded in Vitest test mode.
 
 Run `pnpm --filter @tyorm/postgres test` against a dedicated test database to include the PostgreSQL integration suites. The driver's test configuration loads environment settings for Vitest's test mode. See [AGENTS.md](AGENTS.md) for the project roadmap and development conventions.
