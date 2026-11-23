@@ -7,11 +7,13 @@ TyORM is a TypeScript ORM inspired by Java Persistence API (JPA). It combines de
 | Database | TyORM driver | Connector used by the driver |
 | --- | --- | --- |
 | PostgreSQL | [`@tyorm/postgres`](packages/drivers/postgres) `0.1.0` | `pg` `^8.16.3` in the package manifest, with `8.23.1` resolved by the workspace lockfile. |
-| SQLite | [`@tyorm/sqlite`](packages/drivers/sqlite) `0.1.0` | Built-in `node:sqlite`. The package requires Node.js 22.16+ within the 22.x line, or Node.js 24+. |
+| MySQL | [`@tyorm/mysql`](packages/drivers/mysql) `0.1.0` | `mysql2` `^3.0.0`, with `3.24.6` resolved by the workspace lockfile. |
+| SQLite | [`@tyorm/mysql`](packages/drivers/mysql) | The MySQL provider, parameterized SELECT compilation, and pooled connections with transaction support. |
+| [`@tyorm/sqlite`](packages/drivers/sqlite) `0.1.0` | Built-in `node:sqlite`. The package requires Node.js 22.16+ within the 22.x line, or Node.js 24+. |
 
 The TyORM version identifies the adapter package. For PostgreSQL, `pg` has its own version. For SQLite, the SQLite engine version comes from the Node.js runtime and can be checked with `SELECT sqlite_version()`. The workspace validation on Node.js 26.13.0 used SQLite 3.54.0.
 
-Both providers support SELECT queries, repository reads and writes, and transactions through `DataSource`.
+PostgreSQL and SQLite support SELECT queries, repository reads and writes, and transactions through `DataSource`. MySQL also supports SELECT queries, repository reads and writes, and transactions.
 
 ## Packages and architecture
 
@@ -72,6 +74,17 @@ node --env-file=packages/drivers/postgres/.env.test packages/core/examples/guide
 ```
 
 The guide creates and seeds temporary tables, prints compiled SQL and query results, and demonstrates commit and rollback. See the [guide files and chapter index](packages/core/examples/guide/README.md).
+
+### Run the PostgreSQL driver examples
+
+After building the packages, run these from the repository root with the same PostgreSQL environment variables:
+
+```sh
+node packages/drivers/postgres/examples/basic-connection.mjs
+node packages/drivers/postgres/examples/vector-search.mjs
+```
+
+The basic example uses a managed transaction and parameterized SQL. The vector example requires pgvector enabled in the target database and uses `DataSource` to find the nearest neighbors. Both examples create temporary tables.
 
 ## Usage examples
 
@@ -165,6 +178,10 @@ console.table(rows);
 ```
 
 Keep `db` open for the remaining examples and call `await db.close()` in your application's cleanup path.
+
+### Connect to MySQL
+
+Set `type: 'mysql'` and register the provider with `mysql: async () => (await import('@tyorm/mysql')).mysqlProvider()`. Set `database` to your existing MySQL database and supply the usual host, port, username, password and entity settings. The default MySQL port is 3306. Use `DataSource.executeMutation` for INSERT, UPDATE and DELETE, or `Repository.save` to persist an entity. Use transactional tables such as InnoDB. MySQL reads the affected row by primary key on the same connection and transaction. A generated key must use `AUTO_INCREMENT`.
 
 ### Connect to SQLite
 
@@ -288,7 +305,7 @@ const employeeCount = await employees.count();
 
 ### Use repositories in a transaction
 
-Get repositories from the callback scope so that they share the transaction's connection. The manager waits for pending SQL operations, commits on success or rolls back on failure, and releases the connection afterward. Repositories obtained from the scope can execute queries only while the callback is active.
+Get repositories from the callback scope so that they share the transaction's connection. PostgreSQL executes operations on that connection one at a time, in submission order. The manager waits for pending SQL operations, commits on success or rolls back on failure, and releases the connection afterward. Repositories obtained from the scope can execute queries only while the callback is active.
 
 ```ts
 const department = await db.transaction(async scope => {
@@ -323,6 +340,33 @@ const savedDepartment = await db.transaction(async scope => {
 });
 ```
 
+### Search by vector distance in PostgreSQL
+
+Enable the [pgvector extension](https://github.com/pgvector/pgvector) in the database and declare the physical column as `vector(n)`, where `n` is the embedding dimension. Register the entity with the PostgreSQL DataSource. For example, map `Document.embedding` with `@Column({ type: 'vector' })` and use `vectorDistance` to select and order by distance:
+
+```ts
+import { vectorDistance } from '@tyorm/core';
+
+async function findNearest(
+    source: DataSource,
+    document: import('@tyorm/core').EntityTarget,
+    embedding: readonly number[]
+) {
+    const distance = vectorDistance(column('d', 'embedding'), embedding, 'cosine');
+    return source.execute({
+        kind: 'select',
+        from: { entity: document, alias: 'd' },
+        selections: [{ expression: column('d', 'id') }, { expression: distance, alias: 'distance' }],
+        joins: [],
+        orderBy: [{ expression: distance, direction: 'asc' }],
+        distinct: false,
+        limit: 5
+    });
+}
+```
+
+`vectorDistance` supports Euclidean distance (`'l2'`, the default) and cosine distance (`'cosine'`). The driver binds the query vector as a parameter. The embedding length must match the column dimension. The SQLite provider rejects vector distance expressions.
+
 ## Driver extension points
 
 - `DriverProvider` creates a compatible driver and compiler for the engine selected by DataSource.
@@ -341,5 +385,7 @@ pnpm --filter @tyorm/core test
 pnpm --filter @tyorm/sqlite test
 pnpm --filter @tyorm/postgres exec vitest run --mode test --exclude '**/*.integration.test.ts'
 ```
+
+Set `MYSQL_TEST_DATABASE` to a dedicated MySQL test database to include MySQL integration and cross-provider parity. The test user needs permission to create tables and temporary tables. Optional connection settings are `MYSQL_TEST_HOST`, `MYSQL_TEST_PORT`, `MYSQL_TEST_USER`, and `MYSQL_TEST_PASSWORD`.
 
 Run `pnpm --filter @tyorm/postgres test` against a dedicated test database to include the PostgreSQL integration suites. The driver's test configuration loads environment settings for Vitest's test mode. See [AGENTS.md](AGENTS.md) for the project roadmap and development conventions.

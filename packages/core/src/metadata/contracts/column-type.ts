@@ -11,4 +11,5 @@ export type ColumnType =
     | "datetime"
     | "uuid"
     | "json"
-    | "binary";
+    | "binary"
+    | "vector";

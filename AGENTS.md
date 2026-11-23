@@ -372,6 +372,29 @@ Validación del 23 de noviembre de 2026. Pasaron los tres typecheck, el chequeo 
 
 Validación de distribución del 23 de noviembre de 2026. Se instalaron los tarballs de Core y SQLite con npm sin acceso a la red, en una aplicación temporal externa al monorepo. La aplicación compiló con TypeScript, cargó `@tyorm/core/register` y el proveedor SQLite por importación dinámica, guardó una entidad con clave generada y recuperó el registro tras cerrar y reabrir el archivo. El build de Core incluye ahora la entrada pública `register`. El workspace pasó los tres builds y typecheck, el chequeo estricto de la prueba modificada y 468 pruebas en total, incluidas 7 del paquete SQLite y las seis de paridad.
 
+### MySQL — proveedor y lectura inicial
+
+`@tyorm/mysql` usa `mysql2` (3.24.6 en el lockfile) y conserva la estructura de carpetas de los demás drivers. El proveedor se registra en DataSource con el tipo `mysql`. El primer bloque cubre pool, ejecución parametrizada, transacciones y compilación SELECT. La entrega de escritura incorpora `executeMutation` y `Repository.save` con recuperación de filas por clave primaria. MySQL utiliza la misma conexión y transacción para la escritura y la lectura de la fila. Para claves generadas admite una columna AUTO_INCREMENT. Con claves asignadas intenta insertar y, ante un duplicado, actualiza únicamente si encuentra la clave primaria solicitada. La atomicidad requiere tablas transaccionales, como InnoDB.
+
+Pasaron el build, los cuatro typecheck y la regresión del monorepo. Las cinco pruebas de MySQL, incluida la integración de repositorios dentro de una transacción de solo lectura, pasaron en una instancia aislada de MySQL 8.2.0. La integración se activa con `MYSQL_TEST_DATABASE`. Puede configurarse con `MYSQL_TEST_HOST`, `MYSQL_TEST_PORT`, `MYSQL_TEST_USER` y `MYSQL_TEST_PASSWORD` y ejecutarse con `pnpm --filter @tyorm/mysql test`.
+
+Validación de escrituras. Pasaron los builds de Core y MySQL, los cuatro typecheck y 474 pruebas del monorepo. La integración contra MySQL 8.2.0 cubrió la clave generada, el retorno de filas, el guardado por clave compuesta, el conflicto en una clave única secundaria y el rollback.
+
+Cierre del alcance MySQL. Pasaron los cuatro builds, los cuatro typecheck, el chequeo estricto de las dos suites modificadas y 478 pruebas sin omisiones. La suite de paridad ejecutó nueve casos entre PostgreSQL, SQLite y MySQL. En MySQL 8.2.0 se verificaron dos transacciones READ COMMITTED solapadas sobre la misma clave asignada en InnoDB. La prueba usa la tabla dedicada `tyorm_mysql_concurrent` y limpia únicamente su fila de prueba. Los tarballs de Core y MySQL se instalaron con npm en una aplicación temporal fuera del monorepo. Esa aplicación compiló y verificó carga dinámica del proveedor, generación de clave, lectura y actualización.
+### 8.3 Regresión de transacciones PostgreSQL
+
+Validación del 23 de noviembre de 2026. Pasaron los tres typecheck, el chequeo estricto de la suite modificada y 151 pruebas de PostgreSQL. `transaction-context.integration.test.ts` verifica el commit de escrituras que el callback deja pendientes, el orden de los errores SQL 23505 y 25P02, la reversión de una escritura previa y la reutilización de la misma sesión después del rollback. El fixture usa una tabla temporal y un pool con una sola conexión. Durante la suite, `pg` emitió una advertencia de obsolescencia al enviar otra consulta a un cliente ocupado.
+
+Seguimiento de compatibilidad. PostgreSQLConnection serializa consultas, comandos de transacción y liberación por cliente. Un fallo individual conserva su error y permite continuar con el rollback o la liberación. Validación completa del 23 de noviembre de 2026. Pasaron `pnpm build`, `pnpm typecheck` y `pnpm test` con `NODE_OPTIONS=--throw-deprecation`. Pasaron 475 pruebas sin fallos ni omisiones (312 de Core, 156 de PostgreSQL y 7 de SQLite), incluida la integración con pgvector en localhost. La validación se hizo con la versión de pg del lockfile.
+
+### 8.4 Consultas de vectores en PostgreSQL
+
+`@Column({ type: 'vector' })` declara una propiedad vectorial. `vectorDistance` admite L2 y coseno. Core valida los componentes y resuelve la columna física. PostgreSQL vincula el vector como parámetro, usa los operadores de pgvector y delega al motor la comprobación de dimensiones. El proveedor SQLite rechaza esta expresión.
+
+Pasaron el build de Core, los tres typecheck y 312 pruebas de Core, 154 del paquete PostgreSQL y 7 del paquete SQLite. La prueba de vecinos sobre PostgreSQL real quedó omitida porque pgvector no estaba habilitado en la base de pruebas.
+
+Validación de extremo a extremo del 23 de noviembre de 2026. La integración pasó por el driver PostgreSQL de TyORM y `pg` contra un servidor TCP temporal de PGlite con la extensión pgvector 0.8.7. Verificó el orden y la distancia de los vecinos para L2 y coseno, y el error de dimensiones incompatibles. El servidor PostgreSQL local sigue sin la extensión. Para reproducir la prueba con una base que ya tenga pgvector habilitado, configurar sus variables PG y ejecutar `pnpm --filter @tyorm/postgres exec vitest run --mode test tests/vector.integration.test.ts`.
+
 ## 9. Comandos de validación
 
 Ejecutar desde la raíz del monorepo, confirmando que los scripts existen:

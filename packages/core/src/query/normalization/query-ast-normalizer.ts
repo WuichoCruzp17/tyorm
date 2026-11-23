@@ -15,6 +15,13 @@ function cloneExpression(
         case 'column':
             return Object.freeze({ ...expression });
 
+        case 'vector-distance':
+            return Object.freeze({
+                ...expression,
+                column: Object.freeze({ ...expression.column }),
+                vector: Object.freeze([...expression.vector])
+            });
+
         case 'aggregate':
             return expression.argument === undefined
                 ? Object.freeze({ ...expression })

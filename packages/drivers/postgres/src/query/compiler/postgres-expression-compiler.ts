@@ -65,6 +65,13 @@ export class PostgresExpressionCompiler {
                     resolved
                 );
 
+            case 'vector-distance': {
+                const column = this.compile(expression.column, resolved, context);
+                const operator = expression.metric === 'l2' ? '<->' : '<=>';
+                const value = context.bindValue(JSON.stringify(expression.vector));
+                return `(${column} ${operator} ${value}::vector)`;
+            }
+
             case 'aggregate': {
                 const name = PostgresExpressionCompiler.aggregates.get(expression.function);
                 if (name === undefined) {

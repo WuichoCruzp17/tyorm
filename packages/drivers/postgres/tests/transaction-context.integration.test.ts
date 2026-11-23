@@ -28,12 +28,21 @@ describe('TransactionContext - PostgreSQL integration', () => {
       host: process.env.PGHOST!,
       port: Number(process.env.PGPORT ?? 5432),
       database: process.env.PGDATABASE!,
-      user: process.env.PGUSER!,
-      password: process.env.PGPASSWORD!
+      username: process.env.PGUSER!,
+      password: process.env.PGPASSWORD!,
+      pool: { min: 1, max: 1 }
     });
 
 
     manager = new TransactionManager(driver);
+    const connection = await driver.acquireConnection();
+    try {
+      await connection.execute({
+        sql: 'CREATE TEMP TABLE pending_writes (id INTEGER PRIMARY KEY)'
+      });
+    } finally {
+      await connection.release();
+    }
   });
 
   afterAll(async () => {
@@ -86,5 +95,58 @@ describe('TransactionContext - PostgreSQL integration', () => {
     });
 
     expect(result.rows[0]?.value).toBe(42);
+  });
+
+  it('commits writes submitted without awaiting them in the callback', async () => {
+    const ids = [101, 102];
+    await expect(manager.withContext(async context => {
+      for (const id of ids) {
+        void context.execute({
+          sql: 'INSERT INTO pending_writes (id) VALUES ($1)',
+          parameters: [id]
+        });
+      }
+      return 'queued';
+    })).resolves.toBe('queued');
+
+    const result = await manager.withContext(context =>
+      context.execute<{ id: number }>({
+        sql: 'SELECT id FROM pending_writes WHERE id IN ($1, $2) ORDER BY id',
+        parameters: ids
+      })
+    );
+    expect(result.rows).toEqual(ids.map(id => ({ id })));
+  });
+
+  it('drains a pending SQL failure, rolls back earlier writes and reuses the backend', async () => {
+    const id = 201;
+    const backend = await manager.withContext(async context => {
+      const { rows } = await context.execute<{ pid: number }>({
+        sql: 'SELECT pg_backend_pid() AS pid'
+      });
+      return rows[0]?.pid;
+    });
+    expect(backend).toEqual(expect.any(Number));
+
+    const insert = { sql: 'INSERT INTO pending_writes (id) VALUES ($1)', parameters: [id] };
+    await expect(manager.withContext(async context => {
+      void context.execute(insert);
+      void context.execute(insert);
+      void context.execute({ sql: 'SELECT 1' });
+    })).rejects.toMatchObject({
+      name: 'AggregateError',
+      errors: [
+        expect.objectContaining({ code: '23505' }),
+        expect.objectContaining({ code: '25P02' })
+      ]
+    });
+
+    const recovered = await manager.withContext(context =>
+      context.execute<{ pid: number; persisted: boolean }>({
+        sql: 'SELECT pg_backend_pid() AS pid, EXISTS (SELECT 1 FROM pending_writes WHERE id = $1) AS persisted',
+        parameters: [id]
+      })
+    );
+    expect(recovered.rows).toEqual([{ pid: backend, persisted: false }]);
   });
 });

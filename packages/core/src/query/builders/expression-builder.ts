@@ -5,7 +5,8 @@ import type {
     ParameterExpression,
     LiteralExpression,
     NullExpression,
-    QueryValue
+    QueryValue,
+    VectorDistanceExpression
 } from '../ast';
 
 import { QueryAstError } from '../errors';
@@ -69,6 +70,14 @@ export function min(argument: ColumnExpression): AggregateExpression {
 
 export function max(argument: ColumnExpression): AggregateExpression {
     return Object.freeze({ kind: 'aggregate', function: 'max', argument });
+}
+
+export function vectorDistance(
+    column: ColumnExpression,
+    vector: readonly number[],
+    metric: VectorDistanceExpression['metric'] = 'l2'
+): VectorDistanceExpression {
+    return Object.freeze({ kind: 'vector-distance', column, vector: Object.freeze([...vector]), metric });
 }
 
 export function param(

@@ -20,7 +20,7 @@ interface MutationTarget {
 }
 
 export type ResolvedMutation =
-    | (MutationTarget & { readonly kind: 'insert'; readonly values: readonly Binding[] })
+    | (MutationTarget & { readonly kind: 'insert'; readonly values: readonly Binding[]; readonly primaryKeys?: readonly PrimaryKeyMetadata[] })
     | (MutationTarget & { readonly kind: 'update'; readonly key: readonly Binding[]; readonly values: readonly Binding[] })
     | (MutationTarget & { readonly kind: 'delete'; readonly key: readonly Binding[] })
     | (MutationTarget & {
@@ -48,7 +48,7 @@ export function resolveMutation(model: OrmMetadataModel, query: MutationQuery): 
 
     switch (query.kind) {
         case 'insert':
-            return { ...target, kind: 'insert', values: insertBindings(query.values, columns, keys) };
+            return { ...target, kind: 'insert', values: insertBindings(query.values, columns, keys), primaryKeys: keys };
         case 'save':
             return resolveSave(query.values, target, columns, keys);
         case 'update': {
@@ -100,7 +100,7 @@ function resolveSave(
         column.insertable && Object.hasOwn(values, name) ? [[name, values[name]]] : []
     ));
     const insert = insertBindings(insertValues, columns, keys);
-    if (generated.length > 0) return { ...target, kind: 'insert', values: insert };
+    if (generated.length > 0) return { ...target, kind: 'insert', values: insert, primaryKeys: keys };
     return { ...target, kind: 'upsert', values: insert, conflictColumns: [...keyColumns], assignments };
 }
 
