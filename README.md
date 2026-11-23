@@ -299,7 +299,7 @@ const employeeCount = await employees.count();
 
 ### Use repositories in a transaction
 
-Get repositories from the callback scope so that they share the transaction's connection. The manager waits for pending SQL operations, commits on success or rolls back on failure, and releases the connection afterward. Repositories obtained from the scope can execute queries only while the callback is active.
+Get repositories from the callback scope so that they share the transaction's connection. PostgreSQL executes operations on that connection one at a time, in submission order. The manager waits for pending SQL operations, commits on success or rolls back on failure, and releases the connection afterward. Repositories obtained from the scope can execute queries only while the callback is active.
 
 ```ts
 const department = await db.transaction(async scope => {
