@@ -130,19 +130,21 @@ it.skipIf(!database)('calls a stored procedure on a MySQL transaction session', 
             sql: 'DROP PROCEDURE IF EXISTS tyorm_mysql_read_values'
         });
         await connection.execute({
-            sql: 'CREATE PROCEDURE tyorm_mysql_read_values(IN input_value VARCHAR(50), IN total_value INT) BEGIN SELECT input_value AS value, total_value AS total; SELECT total_value + 1 AS next_total; END'
+            sql: 'CREATE PROCEDURE tyorm_mysql_read_values(IN input_value VARCHAR(50), OUT output_value VARCHAR(50), INOUT total_value INT) BEGIN SET output_value = CONCAT(input_value, \':out\'); SET total_value = total_value + 1; SELECT input_value AS value; END'
         });
 
         await connection.beginTransaction();
         await expect(connection.callProcedure(
             'tyorm_mysql_read_values',
-            ["O'Reilly", 2]
+            [
+                { mode: 'in', value: "O'Reilly" },
+                { mode: 'out' },
+                { mode: 'inout', value: 2 }
+            ]
         )).resolves.toEqual({
-            resultSets: [
-                [{ value: "O'Reilly", total: 2 }],
-                [{ next_total: 3 }]
-            ],
-            affectedRows: 0
+            resultSets: [[{ value: "O'Reilly" }]],
+            affectedRows: 0,
+            outputParameters: [undefined, "O'Reilly:out", 3]
         });
         await connection.commit();
     } finally {

@@ -1,11 +1,22 @@
+import { randomUUID } from 'node:crypto';
 import type { PoolConnection, ProcedureCallPacket, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import type { DatabaseConnection, Query, QueryResult, TransactionOptions } from '@tyorm/core';
 
 import { MySQLMutation, qualifiedTable } from '../query/compiler/mysql-select-compiler';
 
+export type MySQLProcedureInput = string | number | boolean | bigint | Date | Uint8Array | null;
+
+export type MySQLProcedureParameter =
+    | { readonly mode: 'in'; readonly value: unknown }
+    | { readonly mode: 'out' }
+    | { readonly mode: 'inout'; readonly value: unknown };
+
+export type MySQLProcedureArgument = MySQLProcedureInput | MySQLProcedureParameter;
+
 export interface MySQLProcedureResult {
     readonly resultSets: readonly (readonly Record<string, unknown>[])[];
     readonly affectedRows: number;
+    readonly outputParameters?: readonly unknown[];
 }
 
 const isolation = {
@@ -34,26 +45,88 @@ export class MySQLConnection implements DatabaseConnection {
 
     callProcedure(
         name: string,
-        parameters: readonly unknown[] = [],
+        parameters: readonly MySQLProcedureArgument[] = [],
         schema?: string
     ): Promise<MySQLProcedureResult> {
         return this.enqueue(async () => {
             this.assertUsable();
-            const placeholders = parameters.map(() => '?').join(', ');
-            const sql = `CALL ${qualifiedTable(name, schema)}(${placeholders})`;
-            const [result] = await this.client.execute<ProcedureCallPacket | RowDataPacket[][]>(
-                sql, parameters.map(toMySQLValue)
+            const args = parameters.map(normalizeProcedureParameter);
+            const outputIndexes = args.flatMap((argument, index) =>
+                argument.mode === 'out' || argument.mode === 'inout' ? [index] : []
             );
-            if (!Array.isArray(result)) return { resultSets: [], affectedRows: result.affectedRows };
+            const variables = new Map(outputIndexes.map(index =>
+                [index, `@tyorm_${randomUUID().replaceAll('-', '')}_${index}`]
+            ));
 
-            const status = result.at(-1);
-            if (!status || Array.isArray(status)) throw new Error('Missing MySQL procedure status.');
-            const resultSets: RowDataPacket[][] = [];
-            for (const item of result) {
-                if (Array.isArray(item)) resultSets.push(item);
+            let procedureResult: MySQLProcedureResult | undefined;
+            let operationError: unknown;
+            let operationFailed = false;
+            try {
+                if (outputIndexes.length > 0) {
+                    const assignments = outputIndexes.map(index => `${variables.get(index)} = ?`);
+                    const initialValues = outputIndexes.map(index => {
+                        const argument = args[index];
+                        if (!argument) throw new Error('Missing MySQL procedure parameter.');
+                        return argument.mode === 'inout' ? toMySQLValue(argument.value) : null;
+                    });
+                    await this.client.query(`SET ${assignments.join(', ')}`, initialValues);
+                }
+
+                const placeholders = args.map((argument, index) => {
+                    if (argument.mode === 'out' || argument.mode === 'inout') return variables.get(index);
+                    return '?';
+                });
+                const sql = `CALL ${qualifiedTable(name, schema)}(${placeholders.join(', ')})`;
+                const inputValues = args.flatMap(argument =>
+                    argument.mode === 'in' ? [toMySQLValue(argument.value)] : []
+                );
+                const [result] = await this.client.execute<ProcedureCallPacket | RowDataPacket[][]>(
+                    sql, inputValues
+                );
+                procedureResult = readProcedureResult(result);
+
+                if (outputIndexes.length > 0) {
+                    const selections = outputIndexes.map(index =>
+                        `${variables.get(index)} AS \`output_${index}\``
+                    );
+                    const [outputRows] = await this.client.query<RowDataPacket[]>(
+                        `SELECT ${selections.join(', ')}`
+                    );
+                    const outputRow = outputRows[0];
+                    if (!outputRow) throw new Error('Missing MySQL procedure output row.');
+                    const outputParameters: unknown[] = Array.from({ length: args.length });
+                    for (const index of outputIndexes) {
+                        outputParameters[index] = outputRow[`output_${index}`];
+                    }
+                    procedureResult = { ...procedureResult, outputParameters };
+                }
+            } catch (error) {
+                operationFailed = true;
+                operationError = error;
             }
-            return { resultSets, affectedRows: status.affectedRows };
+
+            if (outputIndexes.length > 0) {
+                try {
+                    await this.clearProcedureVariables(variables);
+                } catch (cleanupError) {
+                    if (!operationFailed) throw cleanupError;
+                    throw new AggregateError(
+                        [operationError, cleanupError],
+                        'MySQL procedure call and cleanup failed.'
+                    );
+                }
+            }
+
+            if (operationFailed) throw operationError;
+            if (!procedureResult) throw new Error('MySQL procedure returned no result.');
+            return procedureResult;
         });
+    }
+
+    private async clearProcedureVariables(variables: ReadonlyMap<number, string>): Promise<void> {
+        if (variables.size === 0) return;
+        const assignments = [...variables.values()].map(variable => `${variable} = NULL`);
+        await this.client.query(`SET ${assignments.join(', ')}`);
     }
 
     private async executeStatement<T>({ sql, parameters }: Query): Promise<QueryResult<T>> {
@@ -209,4 +282,42 @@ function toMySQLValue(value: unknown): string | number | boolean | Date | Buffer
     if (typeof value === 'bigint') return value.toString();
     if (value instanceof Uint8Array) return Buffer.from(value);
     throw new TypeError('Unsupported MySQL parameter value.');
+}
+
+type NormalizedProcedureParameter =
+    | { readonly mode: 'in'; readonly value: unknown }
+    | { readonly mode: 'out' }
+    | { readonly mode: 'inout'; readonly value: unknown };
+
+function normalizeProcedureParameter(parameter: unknown): NormalizedProcedureParameter {
+    if (typeof parameter !== 'object' || parameter === null || !('mode' in parameter)) {
+        return { mode: 'in', value: parameter };
+    }
+
+    switch (parameter.mode) {
+        case 'in':
+            if (!('value' in parameter)) throw new TypeError('An IN procedure parameter requires a value.');
+            return { mode: 'in', value: parameter.value };
+        case 'out':
+            return { mode: 'out' };
+        case 'inout':
+            if (!('value' in parameter)) throw new TypeError('An INOUT procedure parameter requires a value.');
+            return { mode: 'inout', value: parameter.value };
+        default:
+            return { mode: 'in', value: parameter };
+    }
+}
+
+function readProcedureResult(
+    result: ProcedureCallPacket | RowDataPacket[][]
+): MySQLProcedureResult {
+    if (!Array.isArray(result)) return { resultSets: [], affectedRows: result.affectedRows };
+
+    const status = result.at(-1);
+    if (!status || Array.isArray(status)) throw new Error('Missing MySQL procedure status.');
+    const resultSets: RowDataPacket[][] = [];
+    for (const item of result) {
+        if (Array.isArray(item)) resultSets.push(item);
+    }
+    return { resultSets, affectedRows: status.affectedRows };
 }

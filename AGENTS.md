@@ -397,11 +397,13 @@ Validación de extremo a extremo del 23 de noviembre de 2026. La integración pa
 
 ### 8.5 Procedimientos almacenados en MySQL
 
-`MySQLDriver.acquireConnection()` devuelve una conexión MySQL que expone `callProcedure(nombre, parametros, esquema?)`. La llamada vincula los parámetros IN, cita el nombre y el esquema, y devuelve los conjuntos de filas en orden y el recuento final de filas afectadas que informa MySQL. En una transacción iniciada en esa conexión, la llamada comparte la sesión y su cola de operaciones. El llamador libera la conexión al finalizar. La API de esta entrega se limita a parámetros IN.
+`MySQLDriver.acquireConnection()` devuelve una conexión MySQL que expone `callProcedure(nombre, parametros, esquema?)`. La llamada vincula los parámetros IN, cita el nombre y el esquema, y devuelve los conjuntos de filas en orden y el recuento final de filas afectadas que informa MySQL. En una transacción iniciada en esa conexión, la llamada comparte la sesión y su cola de operaciones. El llamador libera la conexión al finalizar.
 
 Validación del 23 de noviembre de 2026. Pasaron los cuatro builds y typecheck y 483 pruebas, incluidas dos pruebas nuevas de conexión MySQL. Se omitieron cinco casos de integración y paridad que requieren MYSQL_TEST_DATABASE. La llamada a un procedimiento queda pendiente de validación contra un servidor MySQL.
 
 Validación real completada el 23 de noviembre de 2026. La suite de MySQL pasó 12 pruebas contra MySQL local con `tyorm_test`, incluidas la creación y ejecución de un procedimiento dentro de una transacción y la limpieza del procedimiento. La conexión usa el protocolo textual para DDL de rutinas y conserva `callProcedure` con parámetros vinculados dentro de la cola transaccional.
+
+Ampliación de parámetros de procedimientos. `callProcedure` admite descriptores `{ mode: 'in', value }`, `{ mode: 'out' }` y `{ mode: 'inout', value }`, además de valores directos para IN. Las variables de sesión OUT/INOUT son únicas por llamada, sus valores se recuperan en `outputParameters` por posición y se limpian en la misma conexión. Las pruebas unitarias y de integración MySQL validan OUT e INOUT reales dentro de una transacción.
 
 ## 9. Comandos de validación
 

@@ -40,6 +40,65 @@ it('calls a qualified procedure with bound inputs and preserves each result set'
     expect(execute).toHaveBeenNthCalledWith(2, 'CALL `refresh`()', []);
 });
 
+it('binds IN values and retrieves OUT and INOUT values by argument position', async () => {
+    const query = vi.fn()
+        .mockResolvedValueOnce([{ affectedRows: 0 }])
+        .mockResolvedValueOnce([[{ output_1: 'returned', output_2: 3 }], []])
+        .mockResolvedValueOnce([{ affectedRows: 0 }]);
+    const execute = vi.fn().mockResolvedValueOnce([
+        [[{ ok: 1 }], { affectedRows: 0 }]
+    ]);
+    const connection = new MySQLConnection({ query, execute } as unknown as PoolConnection);
+
+    await expect(connection.callProcedure('write_values', [
+        { mode: 'in', value: "O'Reilly" },
+        { mode: 'out' },
+        { mode: 'inout', value: 2 }
+    ])).resolves.toEqual({
+        resultSets: [[{ ok: 1 }]],
+        affectedRows: 0,
+        outputParameters: [undefined, 'returned', 3]
+    });
+
+    expect(query).toHaveBeenNthCalledWith(
+        1,
+        expect.stringMatching(/^SET @tyorm_[a-f0-9]+_1 = \?, @tyorm_[a-f0-9]+_2 = \?$/),
+        [null, 2]
+    );
+    expect(execute).toHaveBeenCalledWith(
+        expect.stringMatching(/^CALL `write_values`\(\?, @tyorm_[a-f0-9]+_1, @tyorm_[a-f0-9]+_2\)$/),
+        ["O'Reilly"]
+    );
+    expect(query).toHaveBeenNthCalledWith(
+        2,
+        expect.stringMatching(/^SELECT @tyorm_[a-f0-9]+_1 AS `output_1`, @tyorm_[a-f0-9]+_2 AS `output_2`$/)
+    );
+    expect(query).toHaveBeenNthCalledWith(
+        3,
+        expect.stringMatching(/^SET @tyorm_[a-f0-9]+_1 = NULL, @tyorm_[a-f0-9]+_2 = NULL$/)
+    );
+});
+
+it('clears session variables when a procedure call fails', async () => {
+    const failure = new Error('procedure failed');
+    const query = vi.fn()
+        .mockResolvedValueOnce([{ affectedRows: 0 }])
+        .mockResolvedValueOnce([{ affectedRows: 0 }]);
+    const execute = vi.fn().mockRejectedValueOnce(failure);
+    const connection = new MySQLConnection({ query, execute } as unknown as PoolConnection);
+
+    await expect(connection.callProcedure('write_value', [{ mode: 'out' }])).rejects.toBe(failure);
+    expect(query).toHaveBeenNthCalledWith(
+        1,
+        expect.stringMatching(/^SET @tyorm_[a-f0-9]+_0 = \?$/),
+        [null]
+    );
+    expect(query).toHaveBeenNthCalledWith(
+        2,
+        expect.stringMatching(/^SET @tyorm_[a-f0-9]+_0 = NULL$/)
+    );
+});
+
 it('uses the text protocol for procedure DDL', async () => {
     const query = vi.fn().mockResolvedValueOnce([{ affectedRows: 0 }]);
     const execute = vi.fn();
