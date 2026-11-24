@@ -4,24 +4,30 @@ TyORM is a TypeScript ORM inspired by Java Persistence API (JPA). It combines de
 
 ## Supported databases
 
-| Database | TyORM driver | Connector used by the driver |
-| --- | --- | --- |
-| PostgreSQL | [`@tyorm/postgres`](packages/drivers/postgres) `0.1.0` | `pg` `^8.16.3` in the package manifest, with `8.23.1` resolved by the workspace lockfile. |
-| MySQL | [`@tyorm/mysql`](packages/drivers/mysql) `0.1.0` | `mysql2` `^3.0.0`, with `3.24.6` resolved by the workspace lockfile. |
-| SQLite | [`@tyorm/sqlite`](packages/drivers/sqlite) `0.1.0` | Built-in `node:sqlite`. The package requires Node.js 22.16+ within the 22.x line, or Node.js 24+. |
+| Database   | TyORM driver                                           | Connector used by the driver                                                                      |
+| ---------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| PostgreSQL | [`@tyorm/postgres`](packages/drivers/postgres) `0.1.0` | `pg` `^8.16.3` in the package manifest, with `8.23.1` resolved by the workspace lockfile.         |
+| MySQL      | [`@tyorm/mysql`](packages/drivers/mysql) `0.1.0`       | `mysql2` `^3.0.0`, with `3.24.6` resolved by the workspace lockfile.                              |
+| SQLite     | [`@tyorm/sqlite`](packages/drivers/sqlite) `0.1.0`     | Built-in `node:sqlite`. The package requires Node.js 22.16+ within the 22.x line, or Node.js 24+. |
 
 The TyORM version identifies the adapter package. For PostgreSQL, `pg` has its own version. For SQLite, the SQLite engine version comes from the Node.js runtime and can be checked with `SELECT sqlite_version()`. The workspace validation on Node.js 26.13.0 used SQLite 3.54.0.
 
 PostgreSQL and SQLite support SELECT queries, repository reads and writes, and transactions through `DataSource`. MySQL also supports SELECT queries, repository reads and writes, and transactions.
 
+## Node.js compatibility
+
+The workspace has passed `pnpm typecheck` and `pnpm test` on Node.js 22.16.0, 24.22.3, and 26.13.1. These runs used the default test configuration, which excludes database integration tests.
+
+The `@tyorm/sqlite` package declares `^22.16.0 || >=24.0.0` in its `engines` field because it uses the built-in `node:sqlite` module. The Core, PostgreSQL, and MySQL packages do not currently declare Node.js `engines` ranges; the versions above are the versions verified for the workspace.
+
 ## Packages and architecture
 
-| Package | Responsibilities |
-| --- | --- |
-| [`@tyorm/core`](packages/core) | Entity and relation decorators, metadata registry and validation, query AST and builders, semantic resolution, projection APIs, DataSource, repositories, transaction management, and driver contracts. |
-| [`@tyorm/postgres`](packages/drivers/postgres) | The PostgreSQL provider, SELECT and mutation compilation, connection pooling through `pg`, and PostgreSQL transaction and error handling. |
-| [`@tyorm/mysql`](packages/drivers/mysql) | The MySQL provider, SELECT and mutation compilation, connection pooling through `mysql2`, and MySQL transaction handling. |
-| [`@tyorm/sqlite`](packages/drivers/sqlite) | The SQLite provider, SELECT and mutation compilation, and transaction management over a single `node:sqlite` connection. |
+| Package                                        | Responsibilities                                                                                                                                                                                        |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`@tyorm/core`](packages/core)                 | Entity and relation decorators, metadata registry and validation, query AST and builders, semantic resolution, projection APIs, DataSource, repositories, transaction management, and driver contracts. |
+| [`@tyorm/postgres`](packages/drivers/postgres) | The PostgreSQL provider, SELECT and mutation compilation, connection pooling through `pg`, and PostgreSQL transaction and error handling.                                                               |
+| [`@tyorm/mysql`](packages/drivers/mysql)       | The MySQL provider, SELECT and mutation compilation, connection pooling through `mysql2`, and MySQL transaction handling.                                                                               |
+| [`@tyorm/sqlite`](packages/drivers/sqlite)     | The SQLite provider, SELECT and mutation compilation, and transaction management over a single `node:sqlite` connection.                                                                                |
 
 ### Choose and install one driver
 
@@ -114,38 +120,47 @@ Initialize `Symbol.metadata` before evaluating Stage 3 decorated classes. With T
 
 ```ts
 import {
-    Column, Entity, JoinColumn, ManyToOne, OrmMetadataModel,
-    PrimaryKey, QuerySemanticResolver, ensureSymbolMetadata, getEntityMetadata
-} from '@tyorm/core';
+  Column,
+  Entity,
+  JoinColumn,
+  ManyToOne,
+  OrmMetadataModel,
+  PrimaryKey,
+  QuerySemanticResolver,
+  ensureSymbolMetadata,
+  getEntityMetadata,
+} from "@tyorm/core";
 
 ensureSymbolMetadata();
 
-@Entity({ name: 'departments' })
+@Entity({ name: "departments" })
 class Department {
-    @PrimaryKey({ type: 'integer', name: 'department_id' })
-    id!: number;
+  @PrimaryKey({ type: "integer", name: "department_id" })
+  id!: number;
 
-    @Column({ type: 'string' })
-    name!: string;
+  @Column({ type: "string" })
+  name!: string;
 }
 
-@Entity({ name: 'employees' })
+@Entity({ name: "employees" })
 class Employee {
-    @PrimaryKey({ type: 'integer', name: 'employee_id' })
-    id!: number;
+  @PrimaryKey({ type: "integer", name: "employee_id" })
+  id!: number;
 
-    @Column({ type: 'string', name: 'display_name' })
-    name!: string;
+  @Column({ type: "string", name: "display_name" })
+  name!: string;
 
-    @ManyToOne(() => Department)
-    @JoinColumn({ name: 'department_fk', referencedColumnName: 'department_id' })
-    department!: Department;
+  @ManyToOne(() => Department)
+  @JoinColumn({ name: "department_fk", referencedColumnName: "department_id" })
+  department!: Department;
 }
 
-const resolver = new QuerySemanticResolver(new OrmMetadataModel([
+const resolver = new QuerySemanticResolver(
+  new OrmMetadataModel([
     getEntityMetadata(Department),
-    getEntityMetadata(Employee)
-]));
+    getEntityMetadata(Employee),
+  ]),
+);
 ```
 
 ### Connect and execute a SELECT
@@ -153,42 +168,46 @@ const resolver = new QuerySemanticResolver(new OrmMetadataModel([
 `column('e', 'name')` uses the TypeScript property name. The resolver looks up the physical column `display_name`. `DataSource` loads the provider registered for the configured engine, resolves the query, and executes it with bound parameters. It acquires and releases a connection for each standalone query.
 
 ```ts
-import { DataSource, column, eq, param, type SelectQuery } from '@tyorm/core';
+import { DataSource, column, eq, param, type SelectQuery } from "@tyorm/core";
 
 const password = process.env.PGPASSWORD;
 const db = await DataSource.connect({
-    type: 'postgres',
-    providers: { postgres: async () => (await import('@tyorm/postgres')).postgresProvider() },
-    entities: [Department, Employee],
-    host: process.env.PGHOST ?? 'localhost',
-    port: Number(process.env.PGPORT ?? 5432),
-    database: process.env.PGDATABASE ?? 'tyorm_test',
-    username: process.env.PGUSER ?? 'postgres',
-    ...(password === undefined ? {} : { password })
+  type: "postgres",
+  providers: {
+    postgres: async () => (await import("@tyorm/postgres")).postgresProvider(),
+  },
+  entities: [Department, Employee],
+  host: process.env.PGHOST ?? "localhost",
+  port: Number(process.env.PGPORT ?? 5432),
+  database: process.env.PGDATABASE ?? "tyorm_test",
+  username: process.env.PGUSER ?? "postgres",
+  ...(password === undefined ? {} : { password }),
 });
 
-const employeeId = column('e', 'id');
-const employeeName = column('e', 'name');
+const employeeId = column("e", "id");
+const employeeName = column("e", "name");
 
 const query: SelectQuery = {
-    kind: 'select',
-    from: { entity: Employee, alias: 'e' },
-    selections: [
-        { expression: employeeName, alias: 'employeeName' },
-        { expression: column('d', 'name'), alias: 'departmentName' }
-    ],
-    joins: [{
-        kind: 'join',
-        type: 'inner',
-        sourceAlias: 'e',
-        relation: 'department',
-        alias: 'd'
-    }],
-    where: eq(column('d', 'id'), param('departmentId')),
-    orderBy: [{ expression: employeeId, direction: 'asc' }],
-    limit: 10,
-    offset: 0,
-    distinct: false
+  kind: "select",
+  from: { entity: Employee, alias: "e" },
+  selections: [
+    { expression: employeeName, alias: "employeeName" },
+    { expression: column("d", "name"), alias: "departmentName" },
+  ],
+  joins: [
+    {
+      kind: "join",
+      type: "inner",
+      sourceAlias: "e",
+      relation: "department",
+      alias: "d",
+    },
+  ],
+  where: eq(column("d", "id"), param("departmentId")),
+  orderBy: [{ expression: employeeId, direction: "asc" }],
+  limit: 10,
+  offset: 0,
+  distinct: false,
 };
 
 const { rows } = await db.execute(query, { departmentId: 1 });
@@ -221,19 +240,21 @@ Configure `type: 'sqlite'` and register `sqliteProvider`. The `database` option 
 
 ```ts
 const sqlite = await DataSource.connect({
-    type: 'sqlite',
-    database: './app.sqlite',
-    entities: [Department],
-    providers: { sqlite: async () => (await import('@tyorm/sqlite')).sqliteProvider() }
+  type: "sqlite",
+  database: "./app.sqlite",
+  entities: [Department],
+  providers: {
+    sqlite: async () => (await import("@tyorm/sqlite")).sqliteProvider(),
+  },
 });
 
 try {
-    const department = await sqlite.transaction(scope =>
-        scope.getRepository(Department).save({ id: 1, name: 'Research' })
-    );
-    console.log(department.name);
+  const department = await sqlite.transaction((scope) =>
+    scope.getRepository(Department).save({ id: 1, name: "Research" }),
+  );
+  console.log(department.name);
 } finally {
-    await sqlite.close();
+  await sqlite.close();
 }
 ```
 
@@ -244,25 +265,25 @@ SQLite serializes access to a single connection per data source. Transactions su
 Use the existing base query and replace its selections and ordering. Here `WHERE` filters source rows by department, then `HAVING` filters the resulting groups by their employee count.
 
 ```ts
-import { count, gte } from '@tyorm/core';
+import { count, gte } from "@tyorm/core";
 
-const departmentName = column('d', 'name');
-const departmentId = column('d', 'id');
+const departmentName = column("d", "name");
+const departmentId = column("d", "id");
 const total = count();
 const groupedQuery: SelectQuery = {
-    ...query,
-    selections: [
-        { expression: departmentName, alias: 'departmentName' },
-        { expression: total, alias: 'employees' }
-    ],
-    groupBy: [departmentId, departmentName],
-    having: gte(total, param('minimum')),
-    orderBy: [{ expression: total, direction: 'desc' }]
+  ...query,
+  selections: [
+    { expression: departmentName, alias: "departmentName" },
+    { expression: total, alias: "employees" },
+  ],
+  groupBy: [departmentId, departmentName],
+  having: gte(total, param("minimum")),
+  orderBy: [{ expression: total, direction: "desc" }],
 };
 
 const { rows: departmentTotals } = await db.execute(groupedQuery, {
-    departmentId: 1,
-    minimum: 2
+  departmentId: 1,
+  minimum: 2,
 });
 ```
 
@@ -287,44 +308,65 @@ The three APIs take a query and a map of aliases to expressions. They use this m
 
 ```ts
 import {
-    defineRecord, executeDtoQuery, executeProjectionQuery, executeRecordQuery,
-    type DatabaseConnection
-} from '@tyorm/core';
-import { PostgresSelectCompiler } from '@tyorm/postgres';
+  defineRecord,
+  executeDtoQuery,
+  executeProjectionQuery,
+  executeRecordQuery,
+  type DatabaseConnection,
+} from "@tyorm/core";
+import { PostgresSelectCompiler } from "@tyorm/postgres";
 
 const compiler = new PostgresSelectCompiler();
 
 class EmployeeDto {
-    constructor(readonly name: string) {}
+  constructor(readonly name: string) {}
 }
 
 function decodeName(value: unknown): string {
-    if (typeof value !== 'string') {
-        throw new TypeError('Expected an employee name.');
-    }
-    return value;
+  if (typeof value !== "string") {
+    throw new TypeError("Expected an employee name.");
+  }
+  return value;
 }
 
 const employeeRecord = defineRecord({ name: decodeName });
 
 async function projectEmployees(connection: DatabaseConnection) {
-    const select = { name: employeeName };
-    const parameters = { departmentId: 1 };
+  const select = { name: employeeName };
+  const parameters = { departmentId: 1 };
 
-    const automatic = await executeProjectionQuery(
-        connection, resolver, compiler, query, select, parameters
-    );
+  const automatic = await executeProjectionQuery(
+    connection,
+    resolver,
+    compiler,
+    query,
+    select,
+    parameters,
+  );
 
-    const dtos = await executeDtoQuery(connection, resolver, compiler, query, {
-        select,
-        map: row => new EmployeeDto(decodeName(row.name))
-    }, parameters);
+  const dtos = await executeDtoQuery(
+    connection,
+    resolver,
+    compiler,
+    query,
+    {
+      select,
+      map: (row) => new EmployeeDto(decodeName(row.name)),
+    },
+    parameters,
+  );
 
-    const records = await executeRecordQuery(
-        connection, resolver, compiler, query, employeeRecord, select, parameters
-    );
+  const records = await executeRecordQuery(
+    connection,
+    resolver,
+    compiler,
+    query,
+    employeeRecord,
+    select,
+    parameters,
+  );
 
-    return { automatic, dtos, records };
+  return { automatic, dtos, records };
 }
 ```
 
@@ -335,18 +377,26 @@ Get a repository for any registered entity with `db.getRepository(Entity)`. Repo
 A decorated repository can add methods while inheriting the standard operations. Register its entity in `DataSource`. The second type parameter specifies the ID type.
 
 ```ts
-import { ReadRepository, RepositoryDecorator as Repository, literal } from '@tyorm/core';
+import {
+  ReadRepository,
+  RepositoryDecorator as Repository,
+  literal,
+} from "@tyorm/core";
 
 @Repository(Employee)
 class EmployeeRepository extends ReadRepository<Employee, number> {
-    findByName(name: string): Promise<Employee[]> {
-        return this.findAll({ where: eq(this.column('name'), literal(name)) });
-    }
+  findByName(name: string): Promise<Employee[]> {
+    return this.findAll({ where: eq(this.column("name"), literal(name)) });
+  }
 }
 
 const employees = db.getRepository(EmployeeRepository);
-const matches = await employees.findByName('Ada');
-const page = await employees.findAll({ orderBy: { name: 'asc' }, limit: 10, offset: 0 });
+const matches = await employees.findByName("Ada");
+const page = await employees.findAll({
+  orderBy: { name: "asc" },
+  limit: 10,
+  offset: 0,
+});
 const employeeCount = await employees.count();
 ```
 
@@ -355,10 +405,13 @@ const employeeCount = await employees.count();
 Get repositories from the callback scope so that they share the transaction's connection. PostgreSQL executes operations on that connection one at a time, in submission order. The manager waits for pending SQL operations, commits on success or rolls back on failure, and releases the connection afterward. Repositories obtained from the scope can execute queries only while the callback is active.
 
 ```ts
-const department = await db.transaction(async scope => {
+const department = await db.transaction(
+  async (scope) => {
     const departments = scope.getRepository(Department);
     return departments.findById(1);
-}, { isolationLevel: 'READ_COMMITTED', readOnly: true });
+  },
+  { isolationLevel: "READ_COMMITTED", readOnly: true },
+);
 ```
 
 For compiled queries or parameterized SQL, `TransactionManager.transaction` supplies the connection directly and `TransactionManager.withContext` supplies a managed executor that tracks pending SQL operations. If rollback or release also fails, `TransactionError` carries the original and cleanup errors.
@@ -370,20 +423,20 @@ For compiled queries or parameterized SQL, `TransactionManager.transaction` supp
 Use `executeMutation` when you want to choose `insert`, `update`, or `delete` explicitly. Mutations use entity property names and bound values. Updates and deletes require the complete primary key as an object, including for single-column keys. Explicit updates with no matching row return an empty `rows` array and an `affectedRows` count of zero in PostgreSQL.
 
 ```ts
-const savedDepartment = await db.transaction(async scope => {
-    const departments = scope.getRepository(Department);
+const savedDepartment = await db.transaction(async (scope) => {
+  const departments = scope.getRepository(Department);
 
-    // Choose a key reserved for this example in your database.
-    const saved = await departments.save({ id: 100, name: 'Research' });
+  // Choose a key reserved for this example in your database.
+  const saved = await departments.save({ id: 100, name: "Research" });
 
-    const { rows: updated } = await scope.executeMutation({
-        kind: 'update',
-        entity: Department,
-        key: { id: saved.id },
-        values: { name: 'Research and Development' }
-    });
-    console.table(updated);
-    return departments.findById(saved.id);
+  const { rows: updated } = await scope.executeMutation({
+    kind: "update",
+    entity: Department,
+    key: { id: saved.id },
+    values: { name: "Research and Development" },
+  });
+  console.table(updated);
+  return departments.findById(saved.id);
 });
 ```
 
@@ -392,23 +445,30 @@ const savedDepartment = await db.transaction(async scope => {
 Enable the [pgvector extension](https://github.com/pgvector/pgvector) in the database and declare the physical column as `vector(n)`, where `n` is the embedding dimension. Register the entity with the PostgreSQL DataSource. For example, map `Document.embedding` with `@Column({ type: 'vector' })` and use `vectorDistance` to select and order by distance:
 
 ```ts
-import { vectorDistance } from '@tyorm/core';
+import { vectorDistance } from "@tyorm/core";
 
 async function findNearest(
-    source: DataSource,
-    document: import('@tyorm/core').EntityTarget,
-    embedding: readonly number[]
+  source: DataSource,
+  document: import("@tyorm/core").EntityTarget,
+  embedding: readonly number[],
 ) {
-    const distance = vectorDistance(column('d', 'embedding'), embedding, 'cosine');
-    return source.execute({
-        kind: 'select',
-        from: { entity: document, alias: 'd' },
-        selections: [{ expression: column('d', 'id') }, { expression: distance, alias: 'distance' }],
-        joins: [],
-        orderBy: [{ expression: distance, direction: 'asc' }],
-        distinct: false,
-        limit: 5
-    });
+  const distance = vectorDistance(
+    column("d", "embedding"),
+    embedding,
+    "cosine",
+  );
+  return source.execute({
+    kind: "select",
+    from: { entity: document, alias: "d" },
+    selections: [
+      { expression: column("d", "id") },
+      { expression: distance, alias: "distance" },
+    ],
+    joins: [],
+    orderBy: [{ expression: distance, direction: "asc" }],
+    distinct: false,
+    limit: 5,
+  });
 }
 ```
 
@@ -420,9 +480,9 @@ Use `executeFunction` to call an existing PostgreSQL function and receive its ro
 
 ```ts
 const { rows: sales } = await db.executeFunction({
-    schema: 'reporting',
-    name: 'sales_by_customer',
-    args: [1]
+  schema: "reporting",
+  name: "sales_by_customer",
+  args: [1],
 });
 ```
 
@@ -434,9 +494,9 @@ Use `executeProcedure` to call an existing procedure. Pass input values in order
 
 ```ts
 const { rows: output } = await db.executeProcedure({
-    schema: 'reporting',
-    name: 'refresh_customer',
-    args: [1, { mode: 'out' }]
+  schema: "reporting",
+  name: "refresh_customer",
+  args: [1, { mode: "out" }],
 });
 ```
 
