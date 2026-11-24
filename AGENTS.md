@@ -486,6 +486,10 @@ Validación TLS MySQL del 23 de noviembre de 2026: OpenSSL confirmó una conexi�
 2. Revisar dependencias directas y transitivas con las herramientas de auditoría aprobadas para el entorno, evaluando impacto y versiones efectivamente usadas.
 3. Inspeccionar tarballs y artefactos publicados para asegurar que no incluyan `.env`, claves privadas, certificados confidenciales, contraseñas ni datos de pruebas.
 
+Endurecimiento del 23 de noviembre de 2026: las pruebas `*.integration.test.ts` de PostgreSQL y MySQL quedan excluidas por defecto. Para habilitarlas se requiere `TYORM_RUN_DB_INTEGRATION=1`, confirmación explícita `TYORM_TEST_DATABASE_ISOLATED=1`, la base configurada exactamente como `tyorm_test` y un usuario distinto de las cuentas administrativas por defecto. La barrera reduce ejecuciones accidentales, pero no verifica los grants efectivos; sigue recomendándose crear cuentas dedicadas con permisos mínimos limitados a la base desechable.
+
+Validación de fase 11.4: typecheck de PostgreSQL y MySQL aprobados; pasaron 123 pruebas unitarias de PostgreSQL y 14 de MySQL con las integraciones excluidas. Se comprobó que la ejecución optativa rechaza las cuentas administrativas actuales. Los dry-runs de empaquetado de Core y los tres drivers incluyeron solo `dist` y `package.json`; no se encontraron `.env`, PEM, claves privadas, certificados, contraseñas ni datos de prueba en `dist`. No se confirmó una vulnerabilidad en dependencias directas; no se pudo ejecutar auditoría de avisos publicados sin conectividad externa. Las integraciones PostgreSQL/MySQL quedan pendientes hasta configurar usuarios de prueba no administrativos y verificar el aislamiento; la propiedad de las bases y los permisos mínimos no se comprobaron de forma independiente.
+
 ### 11.5 Cierre
 
 Priorizar correcciones por severidad y confianza, aplicar cambios quirúrgicos y añadir pruebas de regresión. Repetir las validaciones afectadas y documentar riesgos residuales, limitaciones del análisis y cualquier decisión pendiente. Una revisión estática no sustituye pruebas de integración ni certifica la configuración de cada despliegue.
