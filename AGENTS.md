@@ -291,7 +291,7 @@ Validación del 20 de noviembre de 2026. Pasaron ambos typecheck, el typecheck d
 9. **Segundo motor:** proveedor SQLite de lectura y escritura implementado. El contrato común de DataSource está verificado en SQLite y PostgreSQL.
 10. Mantener/regresar a pruebas de integración PostgreSQL, especialmente comportamiento tras errores SQL y consultas pendientes en una transacción.
 11. **Fase 8.6:** completada y validada según la sección 8.6.
-12. **Fase 8.7 (siguiente):** ejecutar y registrar las integraciones PostgreSQL pendientes con una base desechable y usuario dedicado, incluyendo la paridad de proveedores y la regresión transaccional.
+12. **Fase 8.7 (en curso):** ejecutar y registrar las integraciones PostgreSQL pendientes con una base desechable y usuario dedicado, incluyendo la paridad de proveedores y la regresión transaccional.
 13. **Fase 8.8 (posterior):** cerrar la validación dinámica de seguridad de las fases 11.4–11.5, verificar grants mínimos e aislamiento y completar la auditoría de advisories con una fuente aprobada.
 
 ### 8.1 Próxima fase — DataSource y repositorios
@@ -439,17 +439,22 @@ La variante `{ mode: 'inout', value }` vincula el valor inicial y devuelve el ac
 
 Validación del 24 de noviembre de 2026. La inspección confirmó que los compiladores SQLite y MySQL ya emiten JOINs directos y de tabla intermedia a partir de los planes de Core; no fue necesario modificar su SQL de producción. Se añadieron pruebas para `ManyToOne`, `OneToMany`, `OneToOne` y `ManyToMany`, en ambas orientaciones cuando corresponde, incluyendo claves compuestas, JOINs encadenados, `INNER`/`LEFT`, filtros en `ON` y `WHERE`, y orden de parámetros. Las pruebas SQLite ejecutan consultas reales en memoria. Pasaron los typecheck y 12 pruebas de SQLite, los typecheck y 18 pruebas unitarias de MySQL, las 43 pruebas del compilador SELECT de PostgreSQL y la integración MySQL de relaciones (1 prueba) contra `tyorm_test` usando tablas temporales. La ejecución inicial reveló que Vite expandía el carácter `$` de la contraseña en `.env.test`; la integración pasó al cargarla directamente en el proceso, sin mostrarla ni modificar el archivo. Para ejecuciones futuras, escapar los `$` literales como `\$` en `.env.test`. Las demás integraciones de bases de datos permanecieron excluidas.
 
-### 8.7 Siguiente fase — Integraciones PostgreSQL
+### 8.7 Fase en curso — Integraciones PostgreSQL
 
 **Objetivo.** Validar el comportamiento integrado del proveedor PostgreSQL en un entorno de pruebas aislado, tomando SQLite y MySQL como referencia de los contratos compartidos sin asumir que sus dialectos son idénticos.
 
 **Alcance.**
 
 - Confirmar independientemente que `tyorm_test` es desechable, que el usuario PostgreSQL de pruebas no es administrativo y que sus grants están limitados a la base de pruebas.
+- Provisionar el esquema de pruebas y los permisos limitados mediante [`grant-test-user-permissions.sql`](./packages/drivers/postgres/scripts/grant-test-user-permissions.sql). Antes de ejecutarlo desde pgAdmin Query Tool, conectado como administrador a `tyorm_test`, sustituir `REPLACE_WITH_TEST_ROLE` por el nombre del rol `LOGIN` de pruebas.
 - Ejecutar la suite de paridad de proveedores y las integraciones PostgreSQL de transacciones y consultas relevantes, incluidas las relaciones JOIN, únicamente después de verificar el aislamiento.
 - Registrar pruebas aprobadas, fallidas y excluidas, la versión del servidor y cualquier limitación del entorno.
 
 **Criterios de aceptación.** Las guardas de Vitest deben aceptar la configuración segura; las suites seleccionadas deben pasar contra PostgreSQL real y usar fixtures temporales o limpieza explícita acotada. No ejecutar contra bases de producción ni cuentas administrativas.
+
+Avance del 24 de noviembre de 2026. La configuración pasó las guardas con `tyorm_test` y un usuario no administrativo. Pasaron `provider-parity.integration.test.ts`, `chained-joins.integration.test.ts` y `transaction-context.integration.test.ts`; en total, 14 pruebas aprobadas. `transaction-manager.integration.test.ts` y `postgresql-driver.integration.test.ts` no iniciaron sus casos: ambas recibieron errores de permisos al crear objetos en la base/esquema de pruebas. Vitest reportó además 24 pruebas omitidas, incluidas las suites bloqueadas y cuatro casos de MySQL no configurados en este entorno. No se modificaron objetos mediante esas dos suites. Antes de repetirlas, provisionar el esquema de pruebas y conceder al usuario solo los permisos necesarios en ese esquema, o mantener esas suites excluidas; no otorgar `CREATE` sobre bases ajenas.
+
+Validación adicional del 24 de noviembre de 2026. Con el esquema `tyorm_test` disponible y los permisos del rol restringidos al esquema, se eliminaron de las dos suites bloqueadas las llamadas redundantes a `CREATE SCHEMA`, que requerían un permiso amplio en la base. Pasaron el typecheck de PostgreSQL, 123 pruebas unitarias y las cinco suites de integración seleccionadas: 34 pruebas aprobadas y 4 omitidas.
 
 ### 8.8 Fase posterior — Cierre de validación dinámica de seguridad
 
