@@ -111,6 +111,54 @@ it.skipIf(!database)('reads and writes repositories through DataSource on MySQL'
     }
 });
 
+it.skipIf(!database)('calls a stored procedure on a MySQL transaction session', async () => {
+    if (!database) throw new Error('MYSQL_TEST_DATABASE is required.');
+    const { driver } = await mysqlProvider();
+    const password = process.env.MYSQL_TEST_PASSWORD;
+
+    await driver.connect({
+        type: 'mysql', database,
+        host: process.env.MYSQL_TEST_HOST ?? '127.0.0.1',
+        port: Number(process.env.MYSQL_TEST_PORT ?? 3306),
+        username: process.env.MYSQL_TEST_USER ?? 'root',
+        ...(password === undefined ? {} : { password })
+    });
+
+    const connection = await driver.acquireConnection();
+    try {
+        await connection.execute({
+            sql: 'DROP PROCEDURE IF EXISTS tyorm_mysql_read_values'
+        });
+        await connection.execute({
+            sql: 'CREATE PROCEDURE tyorm_mysql_read_values(IN input_value VARCHAR(50), OUT output_value VARCHAR(50), INOUT total_value INT) BEGIN SET output_value = CONCAT(input_value, \':out\'); SET total_value = total_value + 1; SELECT input_value AS value; END'
+        });
+
+        await connection.beginTransaction();
+        await expect(connection.callProcedure(
+            'tyorm_mysql_read_values',
+            [
+                { mode: 'in', value: "O'Reilly" },
+                { mode: 'out' },
+                { mode: 'inout', value: 2 }
+            ]
+        )).resolves.toEqual({
+            resultSets: [[{ value: "O'Reilly" }]],
+            affectedRows: 0,
+            outputParameters: [undefined, "O'Reilly:out", 3]
+        });
+        await connection.commit();
+    } finally {
+        try {
+            await connection.execute({
+                sql: 'DROP PROCEDURE IF EXISTS tyorm_mysql_read_values'
+            });
+        } finally {
+            await connection.release();
+            await driver.disconnect();
+        }
+    }
+});
+
 @Entity({ name: 'tyorm_mysql_concurrent' })
 class ConcurrentItem {
     @PrimaryKey({ type: 'string' })
