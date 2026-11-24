@@ -37,10 +37,6 @@ describe('PostgreSQLDriver Integration', () => {
 
         try {
             await connection.execute({
-                sql: 'CREATE SCHEMA IF NOT EXISTS tyorm_test'
-            });
-
-            await connection.execute({
                 sql: `
         CREATE TABLE IF NOT EXISTS ${TEST_TABLE} (
           id UUID PRIMARY KEY,
