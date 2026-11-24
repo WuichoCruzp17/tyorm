@@ -411,11 +411,22 @@ A second database backend can implement these contracts while reusing the metada
 pnpm typecheck
 pnpm --filter @tyorm/core test
 pnpm --filter @tyorm/sqlite test
-pnpm --filter @tyorm/postgres exec vitest run --mode test --exclude '**/*.integration.test.ts'
+pnpm --filter @tyorm/postgres test
+pnpm --filter @tyorm/mysql test
 ```
 
-Set `MYSQL_TEST_DATABASE` to a dedicated MySQL test database to include MySQL integration and cross-provider parity. The test user needs permission to create tables and temporary tables. Optional connection settings are `MYSQL_TEST_HOST`, `MYSQL_TEST_PORT`, `MYSQL_TEST_USER`, and `MYSQL_TEST_PASSWORD`.
-The MySQL driver's [`.env.test`](packages/drivers/mysql/.env.test) template is loaded in Vitest test mode.
+Database integration tests are excluded by default. To run them, first verify that the databases are disposable, set both database names to `tyorm_test`, and configure non-administrative test users. The default accounts `postgres` and `root` are rejected. The test users should have only the permissions needed within the test database; verify their actual grants separately.
+
+After confirming isolation, explicitly opt in:
+
+```powershell
+$env:TYORM_RUN_DB_INTEGRATION = '1'
+$env:TYORM_TEST_DATABASE_ISOLATED = '1'
+pnpm --filter @tyorm/postgres test
+pnpm --filter @tyorm/mysql test
+```
+
+`TYORM_TEST_DATABASE_ISOLATED=1` is an operator confirmation, not an automatic proof that a database is disposable. Keep connection credentials in local, ignored `.env.test` files and never commit them. The PostgreSQL driver's [`.env.test`](packages/drivers/postgres/.env.test) and MySQL driver's [`.env.test`](packages/drivers/mysql/.env.test) settings are loaded by Vitest in test mode. MySQL additionally requires `MYSQL_TEST_DATABASE`; optional connection settings are `MYSQL_TEST_HOST`, `MYSQL_TEST_PORT`, `MYSQL_TEST_USER`, and `MYSQL_TEST_PASSWORD`.
 
 `MySQLConnection.callProcedure` accepts raw values as `IN` arguments and `{ mode: 'in', value }`, `{ mode: 'out' }`, or `{ mode: 'inout', value }` descriptors. When outputs are present, `outputParameters` is aligned with the argument list; positions used for `IN` contain `undefined`.
 
