@@ -1,10 +1,10 @@
+import '@tyorm/core/register';
+
 import {
-    Column, Entity, ensureSymbolMetadata, getEntityMetadata, JoinColumn, JoinTable,
+    Column, Entity, getEntityMetadata, JoinColumn, JoinTable,
     ManyToMany, ManyToOne, OneToMany, OneToOne, OrmMetadataModel,
     PrimaryKey, QuerySemanticResolver
 } from '@tyorm/core';
-
-ensureSymbolMetadata();
 
 @Entity({ schema: 'pg_temp', name: 'demo_departments' })
 export class Department {

@@ -29,6 +29,13 @@ The `@tyorm/sqlite` package declares `^22.16.0 || >=24.0.0` in its `engines` fie
 | [`@tyorm/mysql`](packages/drivers/mysql)       | The MySQL provider, SELECT and mutation compilation, connection pooling through `mysql2`, and MySQL transaction handling.                                                                               |
 | [`@tyorm/sqlite`](packages/drivers/sqlite)     | The SQLite provider, SELECT and mutation compilation, and transaction management over a single `node:sqlite` connection.                                                                                |
 
+## Package documentation
+
+- [`@tyorm/core`: architecture, API boundaries, and encapsulation](packages/core/README.md)
+- [`@tyorm/postgres`: PostgreSQL configuration and driver development](packages/drivers/postgres/README.md)
+- [`@tyorm/mysql`: MySQL configuration and driver development](packages/drivers/mysql/README.md)
+- [`@tyorm/sqlite`: SQLite configuration and driver development](packages/drivers/sqlite/README.md)
+
 ### Choose and install one driver
 
 Core does not bundle or depend on a database driver. In an application, install `@tyorm/core` and only the adapter for the database you use: `@tyorm/postgres`, `@tyorm/mysql`, or `@tyorm/sqlite`. The application supplies a `providers` map, and `DataSource.connect` invokes only the provider whose key matches `type`. Use a dynamic import in that provider factory to avoid importing unused adapters. TyORM does not auto-discover a driver from `type`; the matching provider must be registered.
@@ -119,6 +126,8 @@ The following snippets build on the same entity declarations and DataSource. The
 Initialize `Symbol.metadata` before evaluating Stage 3 decorated classes. With TypeScript legacy decorators, compile with `experimentalDecorators: true` and continue declaring column types explicitly. See the [legacy example](packages/core/examples/guide/legacy.ts) and its [TypeScript configuration](packages/core/examples/guide/tsconfig.legacy.json).
 
 ```ts
+import "@tyorm/core/register";
+
 import {
   Column,
   Entity,
@@ -127,11 +136,8 @@ import {
   OrmMetadataModel,
   PrimaryKey,
   QuerySemanticResolver,
-  ensureSymbolMetadata,
   getEntityMetadata,
 } from "@tyorm/core";
-
-ensureSymbolMetadata();
 
 @Entity({ name: "departments" })
 class Department {
@@ -511,6 +517,8 @@ Use `scope.executeProcedure` inside `db.transaction` to share its connection. A 
 - `SqlDialect` defines identifier quoting and parameter placeholders.
 
 A second database backend can implement these contracts while reusing the metadata model, query builders, semantic resolver, projections, and transaction manager. See the [Core contracts](packages/core/src/drivers/contracts), [compiler contracts](packages/core/src/query/compiler), and the [PostgreSQL](packages/drivers/postgres/src) and [SQLite](packages/drivers/sqlite/src) implementations.
+
+These are advanced, low-level capabilities. A `DatabaseConnection` can execute caller-supplied SQL, and `TransactionManager.transaction` exposes that connection to its callback; these APIs do not apply the entity and query validation performed by `DataSource`. Keep such handles within trusted application code and do not expose them to untrusted callers. Prefer `DataSource` and its repositories for normal application operations.
 
 ## Development
 

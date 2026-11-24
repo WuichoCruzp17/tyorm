@@ -25,7 +25,7 @@ function getMetadataChain(
     if (Symbol.metadata === undefined) {
         throw new MetadataError(
             'Symbol.metadata is unavailable. ' +
-            'Initialize it before loading decorated entities.'
+            'Import "@tyorm/core/register" before loading decorated entities.'
         );
     }
 

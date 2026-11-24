@@ -7,7 +7,7 @@ export function requireDecoratorMetadata(
     if (metadata === undefined) {
         throw new MetadataError(
             'Decorator metadata is unavailable. ' +
-            'Call ensureSymbolMetadata() before loading decorated classes.'
+            'Import "@tyorm/core/register" before loading decorated classes.'
         );
     }
 
