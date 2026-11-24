@@ -136,6 +136,15 @@ describe.each(providers)('DataSource contract ($config.type)', ({ provider, conf
         await expect(entries.count()).resolves.toBe(2n);
     }));
 
+    contract('keeps SQL-like input as data across providers', () => withSource(async source => {
+        const payload = "x'); DROP TABLE parity_entries; --";
+        const entries = source.getRepository(Entry);
+        await entries.save({ ...key, label: payload });
+
+        await expect(entries.findById(key)).resolves.toMatchObject({ ...key, label: payload });
+        await expect(entries.count()).resolves.toBe(2n);
+    }));
+
     contract('resolves a relation with named filters, grouping and an aggregate', () => withSource(async source => {
         const groupName = column('g', 'name');
         const total = count();

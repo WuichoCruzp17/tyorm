@@ -99,6 +99,23 @@ it('clears session variables when a procedure call fails', async () => {
     );
 });
 
+it('rejects unsupported INOUT values and clears any generated session variables', async () => {
+    const query = vi.fn().mockResolvedValueOnce([{ affectedRows: 0 }]);
+    const execute = vi.fn();
+    const connection = new MySQLConnection({ query, execute } as unknown as PoolConnection);
+
+    await expect(connection.callProcedure('write_value', [
+        { mode: 'out' },
+        { mode: 'inout', value: { unsupported: true } }
+    ])).rejects.toThrow('Unsupported MySQL parameter value');
+
+    expect(execute).not.toHaveBeenCalled();
+    expect(query).toHaveBeenCalledOnce();
+    expect(query).toHaveBeenCalledWith(
+        expect.stringMatching(/^SET @tyorm_[a-f0-9]+_0 = NULL, @tyorm_[a-f0-9]+_1 = NULL$/)
+    );
+});
+
 it('uses the text protocol for procedure DDL', async () => {
     const query = vi.fn().mockResolvedValueOnce([{ affectedRows: 0 }]);
     const execute = vi.fn();
