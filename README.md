@@ -195,6 +195,20 @@ const { rows } = await db.execute(query, { departmentId: 1 });
 console.table(rows);
 ```
 
+For the PostgreSQL provider, this query compiles to:
+
+```sql
+SELECT "e"."display_name" AS "employeeName", "d"."name" AS "departmentName"
+FROM "employees" AS "e"
+INNER JOIN "departments" AS "d"
+    ON "e"."department_fk" = "d"."department_id"
+WHERE "d"."department_id" = $1
+ORDER BY "e"."employee_id" ASC
+LIMIT $2 OFFSET $3
+```
+
+The bound parameter array is `[1, 10, 0]`: department ID, limit, and offset. Values are sent separately from the SQL text. MySQL and SQLite use `?` placeholders instead of PostgreSQL's numbered placeholders.
+
 Keep `db` open for the remaining examples and call `await db.close()` in your application's cleanup path.
 
 ### Connect to MySQL
@@ -251,6 +265,21 @@ const { rows: departmentTotals } = await db.execute(groupedQuery, {
     minimum: 2
 });
 ```
+
+For the PostgreSQL provider, the query compiles to:
+
+```sql
+SELECT "d"."name" AS "departmentName", COUNT(*) AS "employees"
+FROM "employees" AS "e"
+INNER JOIN "departments" AS "d"
+    ON "e"."department_fk" = "d"."department_id"
+WHERE "d"."department_id" = $1
+GROUP BY "d"."department_id", "d"."name"
+HAVING COUNT(*) >= $2
+ORDER BY COUNT(*) DESC
+```
+
+The bound parameter array is `[1, 2]`: department ID and minimum employee count.
 
 ### Map rows to automatic projections, DTOs, or records
 
