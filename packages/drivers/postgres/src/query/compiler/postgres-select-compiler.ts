@@ -1,6 +1,8 @@
 
 import type {
     CompiledQuery,
+    FunctionCall,
+    ProcedureCall,
     SqlCompiler,
     SqlDialect,
     ResolvedSelectQuery,
@@ -98,6 +100,38 @@ export class PostgresSelectCompiler implements SqlCompiler {
         });
     }
 
+
+    compileFunction(call: FunctionCall): CompiledQuery {
+        const context = new PostgresCompilationContext({}, this.dialect);
+        const name = this.routineName(call);
+        const args = Array.from(call.args ?? [], arg => context.bindValue(arg));
+        return { sql: `SELECT * FROM ${name}(${args.join(', ')})`, parameters: context.getParameters() };
+    }
+
+    compileProcedure(call: ProcedureCall): CompiledQuery {
+        const context = new PostgresCompilationContext({}, this.dialect);
+        const name = this.routineName(call);
+        const args = Array.from(call.args ?? [], arg => {
+            if (typeof arg === 'object' && arg !== null && 'mode' in arg) {
+                if (arg.mode === 'out') return 'NULL';
+                if (arg.mode === 'inout') return context.bindValue(arg.value);
+                throw new Error('Unsupported PostgreSQL procedure argument mode.');
+            }
+            return context.bindValue(arg);
+        });
+        return { sql: `CALL ${name}(${args.join(', ')})`, parameters: context.getParameters() };
+    }
+
+    private routineName({ name, schema }: Pick<FunctionCall, 'name' | 'schema'>): string {
+        const quote = (identifier: string) => {
+            if (typeof identifier !== 'string' || !identifier.trim() || identifier.includes('\0')) {
+                throw new Error('Invalid PostgreSQL routine identifier.');
+            }
+            return this.dialect.quoteIdentifier(identifier);
+        };
+        const quoted = quote(name);
+        return schema === undefined ? quoted : `${quote(schema)}.${quoted}`;
+    }
 
     compileMutation(query: ResolvedMutation): CompiledQuery {
         const context = new PostgresCompilationContext({}, this.dialect);

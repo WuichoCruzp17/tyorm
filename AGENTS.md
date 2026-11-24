@@ -404,6 +404,19 @@ Validación del 23 de noviembre de 2026. Pasaron los cuatro builds y typecheck y
 Validación real completada el 23 de noviembre de 2026. La suite de MySQL pasó 12 pruebas contra MySQL local con `tyorm_test`, incluidas la creación y ejecución de un procedimiento dentro de una transacción y la limpieza del procedimiento. La conexión usa el protocolo textual para DDL de rutinas y conserva `callProcedure` con parámetros vinculados dentro de la cola transaccional.
 
 Ampliación de parámetros de procedimientos. `callProcedure` admite descriptores `{ mode: 'in', value }`, `{ mode: 'out' }` y `{ mode: 'inout', value }`, además de valores directos para IN. Las variables de sesión OUT/INOUT son únicas por llamada, sus valores se recuperan en `outputParameters` por posición y se limpian en la misma conexión. Las pruebas unitarias y de integración MySQL validan OUT e INOUT reales dentro de una transacción.
+### Funciones SQL de PostgreSQL
+
+`DataSource.executeFunction` y `TransactionScope.executeFunction` invocan funciones existentes y devuelven sus filas. El compilador PostgreSQL cita el esquema y nombre por separado y vincula los argumentos posicionales mediante parámetros. El contexto administrado conserva la misma conexión durante la transacción. Los proveedores sin ese compilador rechazan la operación.
+
+Validación del 23 de noviembre de 2026. Pasaron los tres builds y typecheck, el chequeo estricto de las pruebas modificadas y las suites con 313 pruebas de Core, 158 de PostgreSQL y 7 de SQLite. La integración en PostgreSQL local verificó el retorno de filas y la reversión de una escritura de la función.
+
+### Procedimientos PostgreSQL con OUT e INOUT
+
+`DataSource.executeProcedure` y `TransactionScope.executeProcedure` ejecutan CALL en PostgreSQL. Los valores de entrada se vinculan y cada marcador `{ mode: 'out' }` ocupa su posición con NULL. PostgreSQL devuelve las salidas nombradas en una fila de `QueryResult.rows`.
+
+Validación del 23 de noviembre de 2026. Pasaron los tres builds y typecheck, el chequeo estricto de las pruebas de PostgreSQL modificadas y 479 pruebas sin omisiones (313 de Core, 159 de PostgreSQL y 7 de SQLite). La integración local verificó dos salidas OUT y la reversión de una escritura dentro del alcance transaccional.
+
+La variante `{ mode: 'inout', value }` vincula el valor inicial y devuelve el actualizado en `rows`. La integración local verificó el valor actualizado junto a dos salidas OUT, en llamadas directas y dentro de una transacción con rollback. Pasaron el build, el typecheck, el chequeo estricto de las pruebas modificadas y las 479 pruebas del workspace.
 
 ## 9. Comandos de validación
 

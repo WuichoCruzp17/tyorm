@@ -8,7 +8,27 @@ import type {
 
 import type { ResolvedMutation } from '../mutation';
 
+import type { QueryValue } from '../ast';
+
+export interface FunctionCall {
+    readonly schema?: string;
+    readonly name: string;
+    readonly args?: readonly QueryValue[];
+}
+
+export interface ProcedureCall {
+    readonly schema?: string;
+    readonly name: string;
+    readonly args?: readonly (
+        | QueryValue
+        | { readonly mode: 'out' }
+        | { readonly mode: 'inout'; readonly value: QueryValue }
+    )[];
+}
+
 export interface SqlCompiler {
+    compileProcedure?(call: ProcedureCall): CompiledQuery;
+    compileFunction?(call: FunctionCall): CompiledQuery;
     compileMutation?(query: ResolvedMutation): CompiledQuery;
 
     compile(
