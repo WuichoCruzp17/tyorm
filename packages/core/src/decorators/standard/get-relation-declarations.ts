@@ -31,7 +31,8 @@ export function getRelationDeclarations(
 
     if (metadataSymbol === undefined) {
         throw new MetadataError(
-            'Symbol.metadata is unavailable.'
+            'Symbol.metadata is unavailable. ' +
+            'Import "@tyorm/core/register" before loading decorated entities.'
         );
     }
 

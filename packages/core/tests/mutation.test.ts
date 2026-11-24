@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { Column, Entity, OrmMetadataModel, PrimaryKey, getEntityMetadata, resolveMutation } from '../src';
+import { Column, Entity, OrmMetadataModel, PrimaryKey, getEntityMetadata } from '../src';
+import { resolveMutation } from '../src/query/mutation';
 
 @Entity({ name: 'documents', schema: 'app' })
 class Document {
