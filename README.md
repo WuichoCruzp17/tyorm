@@ -29,6 +29,24 @@ The `@tyorm/sqlite` package declares `^22.16.0 || >=24.0.0` in its `engines` fie
 | [`@tyorm/mysql`](packages/drivers/mysql)       | The MySQL provider, SELECT and mutation compilation, connection pooling through `mysql2`, and MySQL transaction handling.                                                                               |
 | [`@tyorm/sqlite`](packages/drivers/sqlite)     | The SQLite provider, SELECT and mutation compilation, and transaction management over a single `node:sqlite` connection.                                                                                |
 
+## Connection capacity and pooling
+
+Each `DataSource` owns its own pool or database connection. The limits below
+apply per `DataSource`, not globally to the application, process, or database
+server. Creating multiple DataSources or application processes can therefore
+increase the total number of open database connections.
+
+| Driver | Default capacity per `DataSource` | Pool behavior and supported settings |
+| ------ | --------------------------------- | ------------------------------------ |
+| [PostgreSQL](packages/drivers/postgres/README.md) | Up to 10 pooled connections (`min: 0`) | `pool.max`, `min`, `acquireTimeoutMs`, and `idleTimeoutMs` are applied. A checked-out connection is returned after an operation; transactions hold it until completion. |
+| [MySQL](packages/drivers/mysql/README.md) | Up to 10 pooled connections | `pool.max` and `idleTimeoutMs` are applied (60-second idle timeout by default). `min` and `acquireTimeoutMs` are not currently applied. Transactions hold a checked-out connection until completion. |
+| [SQLite](packages/drivers/sqlite/README.md) | 1 connection | No pool is used. Operations acquire an exclusive lease and are serialized; `pool.*` settings do not apply. |
+| [SQL Server](packages/drivers/sqlserver/README.md) | Up to 10 pooled connections (`min: 0`) | `pool.max`, `min`, and `idleTimeoutMs` are applied; `acquireTimeoutMs` is not. Transactions use one pooled connection until completion. The adapter is in progress. |
+
+At a pooled driver's connection limit, additional requests wait according to
+that driver's pool behavior. See each driver README for lifecycle details and
+configuration examples.
+
 ## Package documentation
 
 - [`@tyorm/core`: architecture, API boundaries, and encapsulation](packages/core/README.md)

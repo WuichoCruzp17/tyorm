@@ -21,6 +21,21 @@ const db = await DataSource.connect({
 
 Replace `User` with your registered entity classes. Use `":memory:"` for an in-memory database or a filesystem path for a persistent database. Close the DataSource to release the database handle.
 
+## Connection management
+
+SQLite does not use a connection pool in this driver. Each `SQLiteDriver`
+opens one `node:sqlite` database handle per `DataSource`; operations take an
+exclusive lease that is serialized with other operations on that DataSource.
+Thus, one DataSource runs at most one leased operation at a time, and
+transactions keep the lease until commit, rollback, or release. Core's
+`pool.min`, `pool.max`, `pool.acquireTimeoutMs`, and `pool.idleTimeoutMs`
+settings do not apply.
+
+Closing the DataSource waits for the current lease to finish and then closes
+the database handle. The one-handle limit is per DataSource, not global:
+separate DataSources open separate handles, including when they use the same
+database file.
+
 ## SQLite behavior
 
 - The driver owns one synchronous SQLite connection per DataSource and serializes connection leases. In-memory databases are shared by all operations through that DataSource.

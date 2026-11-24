@@ -1,0 +1,1 @@
+import '@tyorm/core/register';

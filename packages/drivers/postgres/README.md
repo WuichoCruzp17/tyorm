@@ -27,6 +27,22 @@ Replace `User` with your registered entity classes. Close the DataSource during 
 
 The Core `DriverConfig` fields include `database`, `host`, `port`, `username`, `password`, and pool settings (`min`, `max`, `acquireTimeoutMs`, `idleTimeoutMs`). `driverOptions` is forwarded to `pg`'s pool configuration. For remote databases, configure TLS using the supported `pg` SSL options and a trusted CA; do not disable certificate verification.
 
+## Connection pool
+
+Each `PostgreSQLDriver` owns one `pg.Pool` per `DataSource`. Its default
+maximum is 10 connections and its default minimum is 0. Configure the limit
+with `pool.max`; `pool.min`, `pool.acquireTimeoutMs`, and
+`pool.idleTimeoutMs` are also applied (`acquireTimeoutMs` maps to
+`connectionTimeoutMillis`). Other `driverOptions` are passed to `pg`, with
+explicit Core pool settings taking precedence.
+
+An operation checks out a client and returns it to the pool when released.
+Transactions keep their checked-out client until commit or rollback and
+release. When a pool reaches its maximum, further checkouts wait for an
+available connection. `DataSource.close()` closes the pool. The maximum is
+per `DataSource`, not per application: multiple DataSources or application
+processes can each open up to their own configured maximum.
+
 ## PostgreSQL features
 
 The provider compiles SELECT and mutation operations, relationship joins, grouping and aggregates, and pagination. PostgreSQL-specific query features include:

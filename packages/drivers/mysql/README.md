@@ -27,6 +27,21 @@ Replace `User` with your registered entity classes. Close the DataSource during 
 
 Core's common driver settings include the database, host, port, username, password, and pool options. This adapter uses `pool.max` for the connection limit and `pool.idleTimeoutMs` for its idle timeout; `pool.min` and `pool.acquireTimeoutMs` are not currently mapped.
 
+## Connection pool
+
+Each `MySQLDriver` owns one `mysql2` pool per `DataSource`. The default maximum
+is 10 connections (`pool.max`) and the default idle timeout is 60 seconds
+(`pool.idleTimeoutMs`). The driver does not apply Core's `pool.min` or
+`pool.acquireTimeoutMs`.
+
+An operation checks out a connection from the shared pool and returns it when
+released. A transaction keeps that connection until commit or rollback;
+releasing an active transaction rolls it back first. Requests beyond the pool
+limit wait for a connection according to `mysql2`'s pool behavior.
+`DataSource.close()` ends the pool. The connection limit applies to each
+DataSource's pool, not globally across multiple DataSources or application
+processes.
+
 ## MySQL-specific behavior
 
 - `MySQLConnection.callProcedure` supports `IN`, `OUT`, and `INOUT` arguments. It runs on an acquired connection and shares that connection's transaction when one is active. The MySQL SQL compiler does not implement Core's `DataSource.executeFunction` or `DataSource.executeProcedure` compilation hooks.
