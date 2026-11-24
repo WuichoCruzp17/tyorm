@@ -295,6 +295,7 @@ Validación del 20 de noviembre de 2026. Pasaron ambos typecheck, el typecheck d
 13. **Fase 8.8:** validación dinámica de seguridad completada y registrada según la sección 8.8.
 14. **Fase 8.9:** revisión de superficie pública y encapsulación completada según la sección 8.9.
 15. **Fase 8.10:** implementar el driver de SQL Server conforme a las entregas y criterios de la sección 8.10.
+16. **Fase 8.11 (futura, pendiente):** diseñar e implementar el sistema de acciones batch descrito en la sección 8.11. Es independiente del driver SQL Server; no iniciar hasta priorizarla.
 
 ### 8.1 Próxima fase — DataSource y repositorios
 
@@ -580,6 +581,42 @@ Avance del 24 de noviembre de 2026. La entrega 8.10.1 quedó implementada con el
 La compilación actual cita identificadores T-SQL con corchetes, enlaza parámetros con nombres y compila SELECT, filtros, agregados (`COUNT_BIG`), JOIN encadenado directo/intermedio y paginación. Sin orden explícito al paginar emite `ORDER BY (SELECT NULL)`, por lo que el orden no es estable. `executeProcedure` admite por ahora parámetros IN; OUT/INOUT se rechazan explícitamente hasta resolver su mapeo de tipos. La compilación de funciones escalares está disponible. Mutaciones y `Repository.save` aún no están implementados. El README del paquete registra este alcance. La importación Node del paquete construido confirmó los exports de la raíz y el rechazo de subpaths internos.
 
 Validación inicial: `pnpm --filter @tyorm/sqlserver typecheck`, `pnpm --filter @tyorm/sqlserver test` (14 pruebas), `pnpm --filter @tyorm/sqlserver build` y `pnpm -r --if-present typecheck` pasaron. `pnpm -r --if-present build` también pasó para los cinco paquetes. Tras añadir las dependencias, `pnpm audit` reportó “No known vulnerabilities found”. No se ejecutó integración real: falta verificar un SQL Server desechable y una cuenta de prueba de privilegios mínimos. Pendiente completar cobertura de relaciones/tipos en SQL Server real, mutaciones y `save`, OUT/INOUT y conjuntos de resultados de procedimientos, paridad y prueba de distribución externa antes de cerrar la fase.
+
+### 8.11 Fase futura — Sistema de acciones batch (pendiente)
+
+**Estado.** Registrada para trabajo futuro; no iniciar en la fase SQL Server ni agregar ahora código o dependencias. Esta fase es independiente de la 8.10.
+
+**Objetivo.** Procesar conjuntos grandes de registros —por ejemplo, filas leídas desde CSV— y ejecutar acciones de acuerdo con reglas explícitas del caso de uso. Debe contemplar tanto operaciones centralizadas en una base de datos (inserciones y actualizaciones masivas) como el envío de lotes a una API externa.
+
+**Entregas propuestas.**
+
+#### 8.11.1 — Contrato de lotes y selección de acciones
+
+- Definir las entradas, el esquema de validación y la forma en que cada fila o grupo de filas se asigna a una acción. Mantener separada la selección de la acción de su ejecución.
+- Acordar cómo se representan resultados y errores por lote y por registro, incluidos registros inválidos, acciones desconocidas y fallos parciales.
+- Diseñar procesamiento con límites explícitos de tamaño y concurrencia, backpressure y una estrategia de memoria acotada para entradas grandes. Decidir si CSV será un adaptador opcional o parte de un paquete separado; evitar acoplar la API batch a un formato de archivo si no es necesario.
+
+#### 8.11.2 — Acciones masivas de base de datos
+
+- Definir el contrato entre el procesador batch y Core/drivers para inserciones y actualizaciones masivas; mantener la generación SQL específica de cada motor en su driver.
+- Resolver división en fragmentos, límites de parámetros del motor, transacciones, claves y recuentos de filas afectadas.
+- Hacer explícita la atomicidad y la política ante errores: lote completo, fragmentos o registros individuales; nunca presentar éxito total cuando hubo resultados parciales.
+- Vincular valores como parámetros y probar datos inválidos y valores con caracteres especiales sin alterar la estructura SQL.
+
+#### 8.11.3 — Envíos batch a APIs
+
+- Permitir un transporte o cliente de API inyectado; no incorporar dependencia ni acoplamiento a un proveedor externo específico sin un requisito aprobado.
+- Definir tamaño de solicitud, límites de concurrencia, tratamiento de límites de tasa, timeout, cancelación y resultados por elemento.
+- Especificar reintentos y recuperación con idempotencia para evitar duplicar acciones tras respuestas inciertas. No reintentar operaciones no idempotentes sin una garantía comprobada.
+- Mantener credenciales fuera de los datos batch y de logs; propagar errores de autenticación, transporte y respuesta de forma observable.
+
+#### 8.11.4 — Adaptadores de entrada, recuperación y documentación
+
+- Si CSV se incluye en el alcance aprobado, procesarlo en streaming con validación de encabezados, conversión explícita de tipos y reporte de errores por fila; definir soporte de codificación, delimitadores y campos multilínea a partir de requisitos reales.
+- Decidir si hacen falta checkpoints/reanudación y persistencia de estado; incorporarlos solo con semántica definida para operaciones repetidas y fallos parciales.
+- Documentar el contrato público, límites configurables, garantías, diferencias entre acciones de base de datos y de API, y ejemplos reproducibles.
+
+**Criterios de aceptación.** Pruebas demuestran selección de acciones por caso, procesamiento acotado de lotes grandes, orden y concurrencia acordados, validación de filas, operaciones masivas parametrizadas, resultados parciales explícitos y manejo seguro de fallos/reintentos. Las pruebas de base de datos usan instancias aisladas y datos sintéticos; los envíos externos se prueban con un transporte controlado. Ninguna integración depende de credenciales reales ni envía datos de prueba a servicios de terceros.
 
 ## 9. Comandos de validación
 
