@@ -39,7 +39,7 @@ vi.mock('mssql', () => ({
 
 @Entity({ name: 'staff' })
 class Staff {
-    @PrimaryKey({ type: 'integer', name: 'staff_id' })
+    @PrimaryKey({ type: 'integer', name: 'staff_id', generation: 'increment' })
     id!: number;
 
     @Column({ type: 'string', name: 'display_name' })
@@ -109,4 +109,50 @@ it('executes a SELECT and an IN stored procedure through DataSource', async () =
 
     await dataSource.close();
     expect(mocks.pool.close).toHaveBeenCalledOnce();
+});
+
+it('executes mutations and Repository.save through DataSource with returned columns', async () => {
+    const dataSource = await DataSource.connect({
+        type: 'sqlserver',
+        database: 'tyorm_test',
+        username: 'tyorm_user',
+        password: 'secret',
+        entities: [Staff],
+        providers: { sqlserver: sqlServerProvider }
+    });
+    mocks.request.query
+        .mockResolvedValueOnce({
+            recordset: [{ id: 7, name: "O'Brien" }],
+            rowsAffected: [1]
+        })
+        .mockResolvedValueOnce({
+            recordset: [{ id: 7, name: 'Updated' }],
+            rowsAffected: [1]
+        });
+
+    await expect(dataSource.executeMutation({
+        kind: 'insert', entity: Staff, values: { name: "O'Brien" }
+    })).resolves.toEqual({
+        rows: [{ id: 7, name: "O'Brien" }],
+        affectedRows: 1
+    });
+    await expect(dataSource.getRepository(Staff).save({ id: 7, name: 'Updated' }))
+        .resolves.toMatchObject({ id: 7, name: 'Updated' });
+
+    expect(mocks.request.query).toHaveBeenNthCalledWith(
+        1,
+        'INSERT INTO [staff] ([display_name]) OUTPUT INSERTED.[staff_id] AS [id], ' +
+            'INSERTED.[display_name] AS [name] VALUES (@p0)'
+    );
+    expect(mocks.request.query).toHaveBeenNthCalledWith(
+        2,
+        'UPDATE [staff] SET [display_name] = @p0 ' +
+            'OUTPUT INSERTED.[staff_id] AS [id], INSERTED.[display_name] AS [name] ' +
+            'WHERE [staff_id] = @p1'
+    );
+    expect(mocks.request.input).toHaveBeenNthCalledWith(1, 'p0', "O'Brien");
+    expect(mocks.request.input).toHaveBeenNthCalledWith(2, 'p0', 'Updated');
+    expect(mocks.request.input).toHaveBeenNthCalledWith(3, 'p1', 7);
+
+    await dataSource.close();
 });

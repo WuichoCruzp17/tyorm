@@ -6,6 +6,7 @@ import type {
     QueryPredicate,
     ResolvedJoinColumn,
     ResolvedJoinCondition,
+    ResolvedMutation,
     ResolvedSelectQuery,
     SqlCompiler
 } from '@tyorm/core';
@@ -141,6 +142,89 @@ export class SqlServerSelectCompiler implements SqlCompiler {
             if (query.limit !== undefined) parts.push(`FETCH NEXT ${bind(query.limit)} ROWS ONLY`);
         }
         return { sql: parts.join(' '), parameters: values };
+    }
+
+    compileMutation(query: ResolvedMutation): CompiledQuery {
+        const values: unknown[] = [];
+        const bind = (value: unknown) => {
+            values.push(value);
+            return `@p${values.length - 1}`;
+        };
+        const target = qualifiedTable(query.table, query.schema);
+        const outputClause = (image: 'INSERTED' | 'DELETED') => {
+            const columns = query.returning
+                .map(({ column: name, alias }) => `${image}.${quote(name)} AS ${quote(alias)}`);
+            return columns.length === 0 ? '' : ` OUTPUT ${columns.join(', ')}`;
+        };
+        const equality = ({ column: name, value }: { readonly column: string; readonly value: unknown }) =>
+            `${quote(name)} = ${bind(value)}`;
+
+        let statement: string;
+        switch (query.kind) {
+            case 'insert': {
+                const columns = query.values.map(({ column: name }) => quote(name));
+                const placeholders = query.values.map(({ value }) => bind(value));
+                statement = `INSERT INTO ${target}` +
+                    (columns.length === 0 ? '' : ` (${columns.join(', ')})`) +
+                    `${outputClause('INSERTED')} ` +
+                    (columns.length === 0
+                        ? 'DEFAULT VALUES'
+                        : `VALUES (${placeholders.join(', ')})`);
+                break;
+            }
+            case 'update':
+                if (query.values.length === 0 || query.key.length === 0) {
+                    throw new Error('SQL Server UPDATE requires assignments and a primary key.');
+                }
+                statement = `UPDATE ${target} SET ${query.values.map(equality).join(', ')}` +
+                    `${outputClause('INSERTED')} WHERE ${query.key.map(equality).join(' AND ')}`;
+                break;
+            case 'delete':
+                if (query.key.length === 0) throw new Error('SQL Server DELETE requires a primary key.');
+                statement = `DELETE FROM ${target}${outputClause('DELETED')} ` +
+                    `WHERE ${query.key.map(equality).join(' AND ')}`;
+                break;
+            case 'upsert': {
+                if (query.values.length === 0 || query.conflictColumns.length === 0) {
+                    throw new Error('SQL Server UPSERT requires insert values and a primary key.');
+                }
+                const sourceColumns = query.values.map(({ column: name }) => quote(name));
+                const sourceValues = query.values.map(({ value }) => bind(value));
+                const sourceByColumn = new Map(query.values.map(({ column: name }, index) => [name, index]));
+                const match = query.conflictColumns.map(name => {
+                    const index = sourceByColumn.get(name);
+                    if (index === undefined) {
+                        throw new Error(`SQL Server UPSERT requires primary-key value "${name}".`);
+                    }
+                    return `[target].${quote(name)} = [source].${sourceColumns[index]}`;
+                }).join(' AND ');
+                const firstConflictColumn = query.conflictColumns[0];
+                if (firstConflictColumn === undefined) {
+                    throw new Error('SQL Server UPSERT requires a primary key.');
+                }
+                const firstConflictIndex = sourceByColumn.get(firstConflictColumn);
+                if (firstConflictIndex === undefined) {
+                    throw new Error(`SQL Server UPSERT requires primary-key value "${firstConflictColumn}".`);
+                }
+                const assignments = query.assignments.length > 0
+                    ? query.assignments.map(({ column: name, value }) =>
+                        `${quote(name)} = ${bind(value)}`
+                    ).join(', ')
+                    : `${quote(firstConflictColumn)} = [source].${sourceColumns[firstConflictIndex]}`;
+                const insertColumns = query.values.map(({ column: name }) => quote(name));
+                const insertValues = query.values.map((_, index) =>
+                    `[source].${sourceColumns[index]}`
+                );
+                statement = `MERGE ${target} WITH (HOLDLOCK) AS [target] ` +
+                    `USING (VALUES (${sourceValues.join(', ')})) AS [source] (${sourceColumns.join(', ')}) ` +
+                    `ON ${match} WHEN MATCHED THEN UPDATE SET ${assignments} ` +
+                    `WHEN NOT MATCHED THEN INSERT (${insertColumns.join(', ')}) ` +
+                    `VALUES (${insertValues.join(', ')})${outputClause('INSERTED')};`;
+                break;
+            }
+        }
+
+        return { sql: statement, parameters: values };
     }
 
     compileProcedure(call: ProcedureCall): CompiledQuery {

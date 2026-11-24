@@ -44,7 +44,11 @@ implemented. Use a least-privilege account.
   OUT and INOUT parameters are rejected until their SQL Server type mapping is
   defined. Scalar function execution is supported; table-valued functions are
   not currently mapped.
-- Mutations and `Repository.save` are not implemented yet.
+- INSERT, UPDATE, DELETE, and `Repository.save` compile to SQL Server
+  statements, but real-engine validation is still pending. Returned values use
+  the SQL Server `OUTPUT` clause, so tables with enabled triggers are not
+  currently supported for these mutations. Assigned-key saves use `MERGE` with
+  `HOLDLOCK`; concurrency behavior still requires integration testing.
 - SQL Server read-only transactions are rejected explicitly.
 
 ## Connection pool

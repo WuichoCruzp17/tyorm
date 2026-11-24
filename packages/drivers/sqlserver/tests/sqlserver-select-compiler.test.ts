@@ -375,3 +375,113 @@ it('compiles owning and inverse one-to-one joins with the physical foreign key o
         parameters: []
     });
 });
+
+it('compiles inserts with returned columns and DEFAULT VALUES', () => {
+    const target = {
+        schema: 'app',
+        table: 'order]details',
+        returning: [
+            { column: 'order_id', alias: 'id' },
+            { column: 'order_label', alias: 'label' }
+        ]
+    };
+    const compiler = new SqlServerSelectCompiler();
+
+    expect(compiler.compileMutation({
+        ...target,
+        kind: 'insert',
+        values: [{ column: 'order_label', value: "O'Brien" }]
+    })).toEqual({
+        sql: 'INSERT INTO [app].[order]]details] ([order_label]) ' +
+            'OUTPUT INSERTED.[order_id] AS [id], INSERTED.[order_label] AS [label] ' +
+            'VALUES (@p0)',
+        parameters: ["O'Brien"]
+    });
+
+    expect(compiler.compileMutation({
+        ...target,
+        kind: 'insert',
+        values: []
+    })).toEqual({
+        sql: 'INSERT INTO [app].[order]]details] ' +
+            'OUTPUT INSERTED.[order_id] AS [id], INSERTED.[order_label] AS [label] ' +
+            'DEFAULT VALUES',
+        parameters: []
+    });
+
+    expect(compiler.compileMutation({
+        table: 'empty_records',
+        kind: 'insert',
+        values: [],
+        returning: []
+    })).toEqual({
+        sql: 'INSERT INTO [empty_records] DEFAULT VALUES',
+        parameters: []
+    });
+});
+
+it('compiles update and delete with complete keys and returned row images', () => {
+    const compiler = new SqlServerSelectCompiler();
+    const target = {
+        table: 'documents',
+        returning: [
+            { column: 'document_id', alias: 'id' },
+            { column: 'tenant_id', alias: 'tenant' },
+            { column: 'title', alias: 'title' }
+        ]
+    };
+
+    expect(compiler.compileMutation({
+        ...target,
+        kind: 'update',
+        values: [{ column: 'title', value: 'updated' }],
+        key: [{ column: 'document_id', value: 7 }, { column: 'tenant_id', value: 4 }]
+    })).toEqual({
+        sql: 'UPDATE [documents] SET [title] = @p0 ' +
+            'OUTPUT INSERTED.[document_id] AS [id], INSERTED.[tenant_id] AS [tenant], ' +
+            'INSERTED.[title] AS [title] WHERE [document_id] = @p1 AND [tenant_id] = @p2',
+        parameters: ['updated', 7, 4]
+    });
+
+    expect(compiler.compileMutation({
+        ...target,
+        kind: 'delete',
+        key: [{ column: 'document_id', value: 7 }, { column: 'tenant_id', value: 4 }]
+    })).toEqual({
+        sql: 'DELETE FROM [documents] OUTPUT DELETED.[document_id] AS [id], ' +
+            'DELETED.[tenant_id] AS [tenant], DELETED.[title] AS [title] ' +
+            'WHERE [document_id] = @p0 AND [tenant_id] = @p1',
+        parameters: [7, 4]
+    });
+});
+
+it('compiles assigned-key upserts with a serializable merge hint and bound assignments', () => {
+    expect(new SqlServerSelectCompiler().compileMutation({
+        schema: 'app',
+        table: 'settings',
+        kind: 'upsert',
+        values: [
+            { column: 'tenant_id', value: 2 },
+            { column: 'setting_key', value: 'locale' },
+            { column: 'setting_value', value: 'en' }
+        ],
+        conflictColumns: ['tenant_id', 'setting_key'],
+        assignments: [{ column: 'setting_value', value: "O'Brien" }],
+        returning: [
+            { column: 'tenant_id', alias: 'tenant' },
+            { column: 'setting_key', alias: 'key' },
+            { column: 'setting_value', alias: 'value' }
+        ]
+    })).toEqual({
+        sql: 'MERGE [app].[settings] WITH (HOLDLOCK) AS [target] ' +
+            'USING (VALUES (@p0, @p1, @p2)) AS [source] ([tenant_id], [setting_key], [setting_value]) ' +
+            'ON [target].[tenant_id] = [source].[tenant_id] ' +
+            'AND [target].[setting_key] = [source].[setting_key] ' +
+            'WHEN MATCHED THEN UPDATE SET [setting_value] = @p3 ' +
+            'WHEN NOT MATCHED THEN INSERT ([tenant_id], [setting_key], [setting_value]) ' +
+            'VALUES ([source].[tenant_id], [source].[setting_key], [source].[setting_value]) ' +
+            'OUTPUT INSERTED.[tenant_id] AS [tenant], INSERTED.[setting_key] AS [key], ' +
+            'INSERTED.[setting_value] AS [value];',
+        parameters: [2, 'locale', 'en', "O'Brien"]
+    });
+});
