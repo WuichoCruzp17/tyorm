@@ -9,10 +9,12 @@ import {
     ManyToOne,
     OrmMetadataModel,
     OneToMany,
+    OneToOne,
     PrimaryKey,
     QuerySemanticResolver,
     column,
     eq,
+    gte,
     param,
     type SelectQuery
 } from '@tyorm/core';
@@ -85,6 +87,25 @@ class Skill {
     workers!: Worker[];
 }
 
+@Entity({ name: 'one_to_one_accounts' })
+class OneToOneAccount {
+    @PrimaryKey({ type: 'integer', name: 'account_id' })
+    id!: number;
+
+    @OneToOne(() => OneToOneProfile, 'account')
+    @JoinColumn({ name: 'profile_fk', referencedColumnName: 'profile_id' })
+    profile!: OneToOneProfile;
+}
+
+@Entity({ name: 'one_to_one_profiles' })
+class OneToOneProfile {
+    @PrimaryKey({ type: 'integer', name: 'profile_id' })
+    id!: number;
+
+    @OneToOne(() => OneToOneAccount, 'profile')
+    account!: OneToOneAccount;
+}
+
 function resolver(): QuerySemanticResolver {
     return new QuerySemanticResolver(new OrmMetadataModel([getEntityMetadata(Staff)]));
 }
@@ -94,6 +115,13 @@ function relationResolver(): QuerySemanticResolver {
         getEntityMetadata(Department),
         getEntityMetadata(Worker),
         getEntityMetadata(Skill)
+    ]));
+}
+
+function oneToOneResolver(): QuerySemanticResolver {
+    return new QuerySemanticResolver(new OrmMetadataModel([
+        getEntityMetadata(OneToOneAccount),
+        getEntityMetadata(OneToOneProfile)
     ]));
 }
 
@@ -223,5 +251,127 @@ it('compiles chained inverse and junction joins with composite keys and ordered 
             'AND ([s].[skill_name] = @p1) WHERE [d].[department_id] = @p2 ' +
             'ORDER BY (SELECT NULL) OFFSET @p3 ROWS FETCH NEXT @p4 ROWS ONLY',
         parameters: ['Ada', 'SQL', 7, 1, 4]
+    });
+});
+
+it('compiles an owning direct join and binds ON values before WHERE values', () => {
+    const query: SelectQuery = {
+        kind: 'select',
+        from: { entity: Worker, alias: 'w' },
+        selections: [
+            { expression: column('w', 'name') },
+            { expression: column('d', 'id'), alias: 'departmentId' }
+        ],
+        joins: [{
+            kind: 'join',
+            type: 'inner',
+            sourceAlias: 'w',
+            relation: 'department',
+            alias: 'd',
+            on: eq(column('d', 'id'), param('departmentId'))
+        }],
+        where: eq(column('w', 'name'), param('workerName')),
+        orderBy: [],
+        distinct: false
+    };
+
+    expect(new SqlServerSelectCompiler().compile(relationResolver().resolve(query), {
+        departmentId: 7,
+        workerName: 'Ada'
+    })).toEqual({
+        sql: 'SELECT [w].[worker_name], [d].[department_id] AS [departmentId] ' +
+            'FROM [workers] AS [w] INNER JOIN [departments] AS [d] ' +
+            'ON [w].[department_fk] = [d].[department_id] ' +
+            'AND [w].[region_fk] = [d].[region_id] AND ([d].[department_id] = @p0) ' +
+            'WHERE [w].[worker_name] = @p1',
+        parameters: [7, 'Ada']
+    });
+});
+
+it('compiles inverse many-to-many joins and grouped HAVING with ordered parameter binding', () => {
+    const workerCount = count(column('w', 'id'));
+    const query: SelectQuery = {
+        kind: 'select',
+        from: { entity: Skill, alias: 's' },
+        selections: [
+            { expression: column('s', 'name'), alias: 'skillName' },
+            { expression: workerCount, alias: 'workerCount' }
+        ],
+        joins: [{
+            kind: 'join',
+            type: 'left',
+            sourceAlias: 's',
+            relation: 'workers',
+            alias: 'w',
+            on: eq(column('w', 'name'), param('workerName'))
+        }],
+        where: eq(column('s', 'id'), param('skillId')),
+        groupBy: [column('s', 'id'), column('s', 'name')],
+        having: gte(workerCount, param('minimumWorkers')),
+        orderBy: [{ expression: workerCount, direction: 'desc' }],
+        distinct: true,
+        offset: 1,
+        limit: 5
+    };
+
+    expect(new SqlServerSelectCompiler().compile(relationResolver().resolve(query), {
+        workerName: 'Ada',
+        skillId: 4,
+        minimumWorkers: 2
+    })).toEqual({
+        sql: 'SELECT DISTINCT [s].[skill_name] AS [skillName], ' +
+            'COUNT_BIG([w].[worker_id]) AS [workerCount] FROM [skills] AS [s] ' +
+            'LEFT JOIN [rel].[worker_skills] AS [__tyorm_junction_0] ' +
+            'ON [s].[skill_id] = [__tyorm_junction_0].[skill_fk] ' +
+            'LEFT JOIN [workers] AS [w] ON [__tyorm_junction_0].[worker_fk] = [w].[worker_id] ' +
+            'AND [__tyorm_junction_0].[tenant_fk] = [w].[tenant_id] ' +
+            'AND ([w].[worker_name] = @p0) WHERE [s].[skill_id] = @p1 ' +
+            'GROUP BY [s].[skill_id], [s].[skill_name] ' +
+            'HAVING COUNT_BIG([w].[worker_id]) >= @p2 ' +
+            'ORDER BY COUNT_BIG([w].[worker_id]) DESC OFFSET @p3 ROWS FETCH NEXT @p4 ROWS ONLY',
+        parameters: ['Ada', 4, 2, 1, 5]
+    });
+});
+
+it('compiles owning and inverse one-to-one joins with the physical foreign key orientation', () => {
+    const base: SelectQuery = {
+        kind: 'select',
+        from: { entity: OneToOneAccount, alias: 'a' },
+        selections: [{ expression: column('p', 'id') }],
+        joins: [{
+            kind: 'join',
+            type: 'inner',
+            sourceAlias: 'a',
+            relation: 'profile',
+            alias: 'p'
+        }],
+        orderBy: [],
+        distinct: false
+    };
+    const compiler = new SqlServerSelectCompiler();
+
+    expect(compiler.compile(oneToOneResolver().resolve(base))).toEqual({
+        sql: 'SELECT [p].[profile_id] FROM [one_to_one_accounts] AS [a] ' +
+            'INNER JOIN [one_to_one_profiles] AS [p] ON [a].[profile_fk] = [p].[profile_id]',
+        parameters: []
+    });
+
+    const inverse: SelectQuery = {
+        ...base,
+        from: { entity: OneToOneProfile, alias: 'p' },
+        selections: [{ expression: column('a', 'id') }],
+        joins: [{
+            kind: 'join',
+            type: 'left',
+            sourceAlias: 'p',
+            relation: 'account',
+            alias: 'a'
+        }]
+    };
+
+    expect(compiler.compile(oneToOneResolver().resolve(inverse))).toEqual({
+        sql: 'SELECT [a].[account_id] FROM [one_to_one_profiles] AS [p] ' +
+            'LEFT JOIN [one_to_one_accounts] AS [a] ON [p].[profile_id] = [a].[profile_fk]',
+        parameters: []
     });
 });
