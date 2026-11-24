@@ -19,7 +19,7 @@ TyORM es un ORM en TypeScript inspirado en JPA (Java), diseñado para ser multib
 
 - Monorepo **pnpm**, nombre `tyorm`, versiones conocidas `@tyorm/core@0.1.0` y `@tyorm/postgres@0.1.0`.
 - Entorno habitual: Windows, PowerShell, VS Code; raíz local del usuario: `C:\Proyectos\Tyorm\tyorm`.
-- TypeScript, Node.js, Vitest 3.2.7, PostgreSQL para integración.
+- TypeScript, Node.js, Vitest 4.1.12, Vite 7.3.8, PostgreSQL para integración.
 - Paquetes conocidos: `packages/core` y `packages/drivers/postgres` (`@tyorm/postgres`).
 - Configuración conocida de `core`: `target: ES2022`, `lib: [ES2022, ESNext.Decorators]`, `experimentalDecorators: false`, `emitDecoratorMetadata: false`; verificar el `tsconfig` actual antes de asumir que permanece igual.
 - No crear archivos o rutas por conjetura: buscar la ubicación real y seguir los índices de exportación existentes.
@@ -291,8 +291,8 @@ Validación del 20 de noviembre de 2026. Pasaron ambos typecheck, el typecheck d
 9. **Segundo motor:** proveedor SQLite de lectura y escritura implementado. El contrato común de DataSource está verificado en SQLite y PostgreSQL.
 10. Mantener/regresar a pruebas de integración PostgreSQL, especialmente comportamiento tras errores SQL y consultas pendientes en una transacción.
 11. **Fase 8.6:** completada y validada según la sección 8.6.
-12. **Fase 8.7 (en curso):** ejecutar y registrar las integraciones PostgreSQL pendientes con una base desechable y usuario dedicado, incluyendo la paridad de proveedores y la regresión transaccional.
-13. **Fase 8.8 (posterior):** cerrar la validación dinámica de seguridad de las fases 11.4–11.5, verificar grants mínimos e aislamiento y completar la auditoría de advisories con una fuente aprobada.
+12. **Fase 8.7:** integraciones PostgreSQL completadas y registradas según la sección 8.7.
+13. **Fase 8.8:** validación dinámica de seguridad completada y registrada según la sección 8.8.
 
 ### 8.1 Próxima fase — DataSource y repositorios
 
@@ -439,7 +439,7 @@ La variante `{ mode: 'inout', value }` vincula el valor inicial y devuelve el ac
 
 Validación del 24 de noviembre de 2026. La inspección confirmó que los compiladores SQLite y MySQL ya emiten JOINs directos y de tabla intermedia a partir de los planes de Core; no fue necesario modificar su SQL de producción. Se añadieron pruebas para `ManyToOne`, `OneToMany`, `OneToOne` y `ManyToMany`, en ambas orientaciones cuando corresponde, incluyendo claves compuestas, JOINs encadenados, `INNER`/`LEFT`, filtros en `ON` y `WHERE`, y orden de parámetros. Las pruebas SQLite ejecutan consultas reales en memoria. Pasaron los typecheck y 12 pruebas de SQLite, los typecheck y 18 pruebas unitarias de MySQL, las 43 pruebas del compilador SELECT de PostgreSQL y la integración MySQL de relaciones (1 prueba) contra `tyorm_test` usando tablas temporales. La ejecución inicial reveló que Vite expandía el carácter `$` de la contraseña en `.env.test`; la integración pasó al cargarla directamente en el proceso, sin mostrarla ni modificar el archivo. Para ejecuciones futuras, escapar los `$` literales como `\$` en `.env.test`. Las demás integraciones de bases de datos permanecieron excluidas.
 
-### 8.7 Fase en curso — Integraciones PostgreSQL
+### 8.7 Fase completada — Integraciones PostgreSQL
 
 **Objetivo.** Validar el comportamiento integrado del proveedor PostgreSQL en un entorno de pruebas aislado, tomando SQLite y MySQL como referencia de los contratos compartidos sin asumir que sus dialectos son idénticos.
 
@@ -456,17 +456,28 @@ Avance del 24 de noviembre de 2026. La configuración pasó las guardas con `tyo
 
 Validación adicional del 24 de noviembre de 2026. Con el esquema `tyorm_test` disponible y los permisos del rol restringidos al esquema, se eliminaron de las dos suites bloqueadas las llamadas redundantes a `CREATE SCHEMA`, que requerían un permiso amplio en la base. Pasaron el typecheck de PostgreSQL, 123 pruebas unitarias y las cinco suites de integración seleccionadas: 34 pruebas aprobadas y 4 omitidas.
 
-### 8.8 Fase posterior — Cierre de validación dinámica de seguridad
+Validación de cierre del 24 de noviembre de 2026. Pasaron las ocho suites de integración PostgreSQL: 38 pruebas aprobadas y 4 omitidas (casos MySQL de paridad no configurados en este paquete). El typecheck y las 123 pruebas unitarias de PostgreSQL también pasaron. PostgreSQL reportó versión 17.11. Una consulta de solo lectura confirmó que `test` no es propietario de `tyorm_test`, no tiene atributos administrativos ni permiso `CREATE` en la base; tiene `CONNECT` y permisos `USAGE, CREATE` en `tyorm_test`, sin permiso de creación en otros esquemas de usuario. El usuario confirmó que `tyorm_test` es una base desechable. Se ejecutaron las pruebas con las guardas de integración habilitadas; no se otorgó `CREATE` a nivel de base.
+
+### 8.8 Fase completada — Cierre de validación dinámica de seguridad
 
 **Objetivo.** Completar los puntos pendientes de las secciones 11.4–11.5 y documentar evidencia y riesgos residuales antes de declarar cerrada la validación dinámica.
 
 **Alcance.**
 
 - Verificar de forma independiente el aislamiento y los permisos mínimos de las cuentas PostgreSQL y MySQL de prueba; una variable de confirmación no constituye esa verificación.
+- Limitar la cuenta MySQL dedicada mediante [`limit-test-user-permissions.sql`](./packages/drivers/mysql/scripts/limit-test-user-permissions.sql), preparado para la cuenta confirmada `test@localhost`; ejecutarlo como administrador.
 - Completar las integraciones PostgreSQL/MySQL autorizadas y una auditoría de avisos de dependencias mediante una fuente aprobada.
 - Actualizar la sección 11 con resultados separados, limitaciones, hallazgos confirmados y pendientes.
 
 **Dependencia.** Ejecutar después de la fase 8.7 para incorporar sus resultados PostgreSQL al cierre de seguridad. No declarar certificada la seguridad integral del despliegue.
+
+Inicio del 24 de noviembre de 2026. La parte PostgreSQL quedó verificada en la fase 8.7, incluyendo versión, rol y privilegios efectivos. Pendiente completar la verificación equivalente de MySQL, sus integraciones autorizadas y la auditoría de avisos de dependencias con una fuente aprobada.
+
+Preflight MySQL del 24 de noviembre de 2026. La conexión confirmó la base `tyorm_test`, la cuenta `test@localhost` y MySQL 8.2.0. `SHOW GRANTS` mostró privilegios `SELECT, INSERT, DELETE, CREATE, DROP, INDEX, ALTER, CREATE TEMPORARY TABLES, EXECUTE` en `*.*`, un alcance más amplio del necesario. El usuario confirmó que la cuenta es exclusiva de TyORM y autorizó limitarla. Se preparó el script para conceder permisos de DML, tablas temporales y rutinas solo en `tyorm_test`, y retirar los privilegios globales; queda pendiente ejecutarlo con una cuenta administrativa y verificar los grants efectivos antes de habilitar las integraciones MySQL. La contraseña contenía `$` sin escapar y Vite no la cargaba; se escapó localmente en el `.env.test` ignorado por Git, sin mostrar ni versionar el valor.
+
+Cierre del 24 de noviembre de 2026. El usuario confirmó que `tyorm_test` de MySQL es desechable y exclusiva para pruebas. Después de aplicar el script, `SHOW GRANTS` confirmó solo `USAGE` global y privilegios `SELECT, INSERT, UPDATE, DELETE, CREATE, CREATE TEMPORARY TABLES, EXECUTE, CREATE ROUTINE, ALTER ROUTINE` en `tyorm_test.*`. Pasaron las 22 pruebas MySQL (incluidas las cuatro integraciones), su typecheck y las integraciones contra MySQL 8.2.0. En PostgreSQL 17.11 pasaron las ocho suites de integración en serie: 38 pruebas aprobadas y 4 casos MySQL de paridad omitidos en el paquete PostgreSQL; esos casos se cubrieron con el paquete MySQL. Una consulta de solo lectura confirmó que `test` no es propietario de la base ni tiene atributos administrativos o `CREATE` en la base; sus permisos de escritura quedan en `tyorm_test`.
+
+La auditoría inicial de `pnpm audit` detectó 6 avisos en dependencias de desarrollo. Se actualizaron Vitest a 4.1.12 y Vite a 7.3.8, y se fijó `esbuild` en 0.28.2 mediante override. Vite 7 conserva la transformación de decoradores Stage 3 que requieren las pruebas con Node 24.22.3. La auditoría final no encontró avisos conocidos. Pasaron `pnpm typecheck`, `pnpm build` y `pnpm test`: 466 pruebas unitarias en total. Esta validación cubre los entornos y versiones indicados; no certifica la seguridad de otros despliegues.
 
 ## 9. Comandos de validación
 
@@ -505,6 +516,8 @@ Al recibir una tarea:
 
 Aplicar este proceso a cambios de seguridad y revisiones periódicas del monorepo. La revisión debe basarse en código, configuración y pruebas reales; distinguir vulnerabilidades confirmadas de recomendaciones de endurecimiento y no declarar el sistema seguro solo porque pasen las pruebas.
 
+Para cerrar cada fase de implementación, seguir también el flujo proporcional de [security-phase-gate](./.github/skills/security-phase-gate/SKILL.md): ejecutar pruebas focalizadas sobre los límites afectados y revisar dependencias cuando cambien manifiestos/lockfiles, antes de releases y al menos mensualmente. No se requiere repetir una auditoría de dependencias después de cada fase que no las modifique.
+
 ### 11.1 Alcance y entorno
 
 1. Revisar Core y todos los drivers (`postgres`, `mysql`, `sqlite`), incluidos ejemplos, manifiestos, lockfile, configuración de pruebas y archivos ignorados.
@@ -540,8 +553,12 @@ Endurecimiento del 23 de noviembre de 2026: las pruebas `*.integration.test.ts` 
 
 Validación de fase 11.4: typecheck de PostgreSQL y MySQL aprobados; pasaron 123 pruebas unitarias de PostgreSQL y 14 de MySQL con las integraciones excluidas. Se comprobó que la ejecución optativa rechaza las cuentas administrativas actuales. Los dry-runs de empaquetado de Core y los tres drivers incluyeron solo `dist` y `package.json`; no se encontraron `.env`, PEM, claves privadas, certificados, contraseñas ni datos de prueba en `dist`. No se confirmó una vulnerabilidad en dependencias directas; no se pudo ejecutar auditoría de avisos publicados sin conectividad externa. Las integraciones PostgreSQL/MySQL quedan pendientes hasta configurar usuarios de prueba no administrativos y verificar el aislamiento; la propiedad de las bases y los permisos mínimos no se comprobaron de forma independiente.
 
+Actualización del 24 de noviembre de 2026: se verificaron de forma efectiva los grants de PostgreSQL y MySQL, se ejecutaron las integraciones autorizadas en las bases desechables confirmadas por el usuario y se completó `pnpm audit`. Los 6 avisos de herramientas de desarrollo se resolvieron con las actualizaciones registradas en §8.8; el resultado final fue “No known vulnerabilities found”. Los builds, typechecks y pruebas se aprobaron; los únicos casos omitidos fueron cuatro escenarios MySQL del archivo de paridad PostgreSQL, cubiertos y aprobados en las integraciones MySQL.
+
 ### 11.5 Cierre
 
 Priorizar correcciones por severidad y confianza, aplicar cambios quirúrgicos y añadir pruebas de regresión. Repetir las validaciones afectadas y documentar riesgos residuales, limitaciones del análisis y cualquier decisión pendiente. Una revisión estática no sustituye pruebas de integración ni certifica la configuración de cada despliegue.
 
 Cierre de revisión de código y configuración del 23 de noviembre de 2026: las fases 11.1–11.5 quedan cerradas en ese alcance, sin vulnerabilidades confirmadas pendientes. Las pruebas PostgreSQL/MySQL ahora exigen opt-in y rechazan las cuentas administrativas por defecto; pasaron los typecheck y las suites unitarias focalizadas. La validación dinámica completa sigue pendiente: provisionar cuentas dedicadas, verificar de forma independiente que las bases sean desechables y que los grants sean mínimos, ejecutar las integraciones y realizar una auditoría de avisos de dependencias con una fuente aprobada. No declarar certificada la seguridad integral hasta completar esas condiciones.
+
+Actualización del 24 de noviembre de 2026: se completaron las verificaciones dinámicas de los entornos de prueba PostgreSQL 17.11 y MySQL 8.2.0, las integraciones correspondientes y la auditoría de dependencias. Se eliminaron los grants globales del usuario MySQL dedicado y ambos motores quedaron limitados a `tyorm_test`. No quedan avisos conocidos según `pnpm audit`; la seguridad integral de despliegues distintos sigue dependiendo de su configuración real.
