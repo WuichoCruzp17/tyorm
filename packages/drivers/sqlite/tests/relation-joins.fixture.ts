@@ -1,7 +1,8 @@
+import '@tyorm/core/register';
+
 import {
     Column,
     Entity,
-    ensureSymbolMetadata,
     getEntityMetadata,
     JoinColumn,
     JoinTable,
@@ -13,8 +14,6 @@ import {
     PrimaryKey,
     QuerySemanticResolver
 } from '@tyorm/core';
-
-ensureSymbolMetadata();
 
 @Entity({ name: 'join_departments' })
 export class Department {

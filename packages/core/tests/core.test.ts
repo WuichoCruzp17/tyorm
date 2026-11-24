@@ -1,19 +1,31 @@
 
 import { describe, expect, it } from 'vitest';
 
-import {
-    TYORM_VERSION,
-    helloTyORM
-} from '../src/index';
+import * as core from '../src/index';
 
 describe('TyORM Core', () => {
 
     it('should expose the current version', () => {
-        expect(TYORM_VERSION).toBe('0.1.0');
+        expect(core.TYORM_VERSION).toBe('0.1.0');
     });
 
-    it('should initialize correctly', () => {
-        expect(helloTyORM()).toBe('TyORM is ready!');
+    it('does not expose internal implementation helpers from the package root', () => {
+        for (const name of [
+            'helloTyORM',
+            'ensureSymbolMetadata',
+            'getRelationDeclarations',
+            'ManagedTransactionContext',
+            'TransactionContextState',
+            'RelationMetadataResolver',
+            'OrmMetadataValidator',
+            'JoinConditionResolver',
+            'JunctionJoinResolver',
+            'QueryAstNormalizer',
+            'QueryAstValidator',
+            'resolveMutation'
+        ]) {
+            expect(core).not.toHaveProperty(name);
+        }
     });
 
 });
