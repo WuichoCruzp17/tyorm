@@ -1,6 +1,6 @@
 # TyORM
 
-TyORM is a TypeScript ORM inspired by Java Persistence API (JPA). It combines decorator-based entity metadata with an explicit query API for building parameterized SQL. Use `DataSource` with the PostgreSQL or SQLite provider to query registered entities and write through repositories. Database-independent query semantics, relationship resolution, projections, and transaction orchestration live in Core.
+TyORM is a TypeScript ORM inspired by Java Persistence API (JPA). It combines decorator-based entity metadata with an explicit query API for building parameterized SQL. Use `DataSource` with the PostgreSQL, MySQL, or SQLite provider to query registered entities and write through repositories. Database-independent query semantics, relationship resolution, projections, and transaction orchestration live in Core.
 
 ## Supported databases
 
@@ -8,8 +8,7 @@ TyORM is a TypeScript ORM inspired by Java Persistence API (JPA). It combines de
 | --- | --- | --- |
 | PostgreSQL | [`@tyorm/postgres`](packages/drivers/postgres) `0.1.0` | `pg` `^8.16.3` in the package manifest, with `8.23.1` resolved by the workspace lockfile. |
 | MySQL | [`@tyorm/mysql`](packages/drivers/mysql) `0.1.0` | `mysql2` `^3.0.0`, with `3.24.6` resolved by the workspace lockfile. |
-| SQLite | [`@tyorm/mysql`](packages/drivers/mysql) | The MySQL provider, parameterized SELECT compilation, and pooled connections with transaction support. |
-| [`@tyorm/sqlite`](packages/drivers/sqlite) `0.1.0` | Built-in `node:sqlite`. The package requires Node.js 22.16+ within the 22.x line, or Node.js 24+. |
+| SQLite | [`@tyorm/sqlite`](packages/drivers/sqlite) `0.1.0` | Built-in `node:sqlite`. The package requires Node.js 22.16+ within the 22.x line, or Node.js 24+. |
 
 The TyORM version identifies the adapter package. For PostgreSQL, `pg` has its own version. For SQLite, the SQLite engine version comes from the Node.js runtime and can be checked with `SELECT sqlite_version()`. The workspace validation on Node.js 26.13.0 used SQLite 3.54.0.
 
@@ -21,11 +20,26 @@ PostgreSQL and SQLite support SELECT queries, repository reads and writes, and t
 | --- | --- |
 | [`@tyorm/core`](packages/core) | Entity and relation decorators, metadata registry and validation, query AST and builders, semantic resolution, projection APIs, DataSource, repositories, transaction management, and driver contracts. |
 | [`@tyorm/postgres`](packages/drivers/postgres) | The PostgreSQL provider, SELECT and mutation compilation, connection pooling through `pg`, and PostgreSQL transaction and error handling. |
+| [`@tyorm/mysql`](packages/drivers/mysql) | The MySQL provider, SELECT and mutation compilation, connection pooling through `mysql2`, and MySQL transaction handling. |
 | [`@tyorm/sqlite`](packages/drivers/sqlite) | The SQLite provider, SELECT and mutation compilation, and transaction management over a single `node:sqlite` connection. |
+
+### Choose and install one driver
+
+Core does not bundle or depend on a database driver. In an application, install `@tyorm/core` and only the adapter for the database you use: `@tyorm/postgres`, `@tyorm/mysql`, or `@tyorm/sqlite`. The application supplies a `providers` map, and `DataSource.connect` invokes only the provider whose key matches `type`. Use a dynamic import in that provider factory to avoid importing unused adapters. TyORM does not auto-discover a driver from `type`; the matching provider must be registered.
+
+For example, a PostgreSQL application registers only its provider:
+
+```ts
+const providers = {
+    postgres: async () => (await import('@tyorm/postgres')).postgresProvider()
+};
+```
+
+Pass this map with `type: 'postgres'` and the rest of your `DataSourceOptions` to `DataSource.connect`. The repository workspace contains all adapters for development, but a consuming application only needs to install Core and its selected adapter.
 
 ### Metadata and relationships
 
-Decorators record declarations on an entity class. `getEntityMetadata` reads the table, column, and primary-key declarations. `OrmMetadataModel` combines the registered entities, resolves relation ownership and join columns, and validates the resulting model. You can construct the model from an array of entity metadata or from a `MetadataRegistry` using `OrmMetadataModel.fromRegistry`.
+Decorators record declarations on an entity class. `getEntityMetadata` reads the table, column, and primary-key declarations. `OrmMetadataModel` combines the registered entities, resolves relation ownership and join columns, and validates the resulting model. You can construct the model from an array of entity metadata or from a `MetadataRegistry` using `OrmMetadataModel.fromRegistry`. `DataSource.getRepository(Entity)` uses this registered metadata for the entity's table, scalar columns, and keys; decorated custom repositories reuse the same mapping.
 
 Supported relations are `ManyToOne`, `OneToMany`, `OneToOne`, and `ManyToMany`. `JoinColumn` supplies explicit physical foreign-key mappings. `JoinTable` describes the junction table and the two sets of columns for a many-to-many relation. Composite keys can contribute multiple column pairs to a join.
 
@@ -33,9 +47,11 @@ Supported relations are `ManyToOne`, `OneToMany`, `OneToOne`, and `ManyToMany`. 
 
 ```mermaid
 flowchart LR
-    A["SelectQuery AST"] --> B["Validate and normalize"]
+    R["Repository read or Query API"] --> A["SelectQuery AST"]
+    M["OrmMetadataModel"] --> R
+    A --> B["Validate and normalize"]
     B --> C["Resolve entities, aliases, columns, and joins"]
-    M["OrmMetadataModel"] --> C
+    M --> C
     C --> D["ResolvedSelectQuery"]
     D --> E["Provider SQL compiler"]
     E --> F["SQL and bound parameters"]
@@ -43,10 +59,12 @@ flowchart LR
     G --> H["Rows or projected results"]
 ```
 
+Repository reads such as `findById`, `findAll`, `existsById`, and `count` translate entity metadata and options into the same SELECT pipeline. Entity hydration happens after rows return. `save` and `executeMutation` use a separate mutation path not shown here.
+
 1. **Build.** A `SelectQuery` describes the source entity, selected expressions, joins, filters, grouping, ordering, and pagination. Builders such as `column`, `eq`, and `param` create expression and predicate nodes.
 2. **Validate and normalize.** Core checks the AST shape, aliases, clause rules, and pagination values. It then creates a frozen snapshot.
 3. **Resolve.** `QuerySemanticResolver` looks up entities and properties, matches them to physical columns, and produces a direct or junction join plan from relation metadata.
-4. **Compile and execute.** The selected provider renders SQL from the resolved query, quotes identifiers, and binds values. PostgreSQL uses numbered placeholders such as `$1`, while SQLite uses positional `?` placeholders. The connection executes the compiled SQL and returns the driver's rows.
+4. **Compile and execute.** The selected provider renders SQL from the resolved query, quotes identifiers, and binds values. PostgreSQL uses numbered placeholders such as `$1`; MySQL and SQLite use positional `?` placeholders. The connection executes the compiled SQL and returns the driver's rows.
 
 The current SELECT pipeline supports aliases, `DISTINCT`, `WHERE`, direct and junction `INNER JOIN` and `LEFT JOIN`, `GROUP BY`, `HAVING`, `ORDER BY`, `LIMIT`, and `OFFSET`. Aggregate expressions include `COUNT(*)`, `COUNT(column)`, `SUM`, `AVG`, `MIN`, and `MAX`.
 
