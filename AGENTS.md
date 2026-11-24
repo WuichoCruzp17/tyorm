@@ -493,3 +493,5 @@ Validación de fase 11.4: typecheck de PostgreSQL y MySQL aprobados; pasaron 123
 ### 11.5 Cierre
 
 Priorizar correcciones por severidad y confianza, aplicar cambios quirúrgicos y añadir pruebas de regresión. Repetir las validaciones afectadas y documentar riesgos residuales, limitaciones del análisis y cualquier decisión pendiente. Una revisión estática no sustituye pruebas de integración ni certifica la configuración de cada despliegue.
+
+Cierre de revisión de código y configuración del 23 de noviembre de 2026: las fases 11.1–11.5 quedan cerradas en ese alcance, sin vulnerabilidades confirmadas pendientes. Las pruebas PostgreSQL/MySQL ahora exigen opt-in y rechazan las cuentas administrativas por defecto; pasaron los typecheck y las suites unitarias focalizadas. La validación dinámica completa sigue pendiente: provisionar cuentas dedicadas, verificar de forma independiente que las bases sean desechables y que los grants sean mínimos, ejecutar las integraciones y realizar una auditoría de avisos de dependencias con una fuente aprobada. No declarar certificada la seguridad integral hasta completar esas condiciones.
