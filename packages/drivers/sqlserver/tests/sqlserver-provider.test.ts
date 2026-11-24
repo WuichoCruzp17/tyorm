@@ -8,6 +8,7 @@ import * as publicApi from '../src/index';
 const mocks = vi.hoisted(() => {
     const request = {
         input: vi.fn(function (this: unknown) { return this; }),
+        output: vi.fn(function (this: unknown) { return this; }),
         query: vi.fn()
     };
     const pool = {
@@ -22,18 +23,40 @@ const mocks = vi.hoisted(() => {
         REPEATABLE_READ: 3,
         SERIALIZABLE: 4
     };
-    const Transaction = vi.fn(function () { return {}; });
-    return { request, pool, ConnectionPool, isolation, Transaction };
+    const transaction = {
+        begin: vi.fn(),
+        request: vi.fn(() => request),
+        commit: vi.fn(),
+        rollback: vi.fn()
+    };
+    const Transaction = vi.fn(function () { return transaction; });
+    const sqlTypes = {
+        NVarChar: vi.fn((length: number) => ({ kind: 'NVarChar', length })),
+        Int: vi.fn(() => ({ kind: 'Int' })),
+        BigInt: vi.fn(() => ({ kind: 'BigInt' })),
+        Decimal: vi.fn((precision: number, scale: number) => ({ kind: 'Decimal', precision, scale })),
+        Float: vi.fn(() => ({ kind: 'Float' })),
+        Bit: vi.fn(() => ({ kind: 'Bit' })),
+        Date: vi.fn(() => ({ kind: 'Date' })),
+        Time: vi.fn((scale: number) => ({ kind: 'Time', scale })),
+        DateTime2: vi.fn((scale: number) => ({ kind: 'DateTime2', scale })),
+        UniqueIdentifier: vi.fn(() => ({ kind: 'UniqueIdentifier' })),
+        VarBinary: vi.fn((length: number) => ({ kind: 'VarBinary', length }))
+    };
+    return { request, pool, ConnectionPool, isolation, Transaction, transaction, sqlTypes };
 });
 
 vi.mock('mssql', () => ({
     ConnectionPool: mocks.ConnectionPool,
     Transaction: mocks.Transaction,
     ISOLATION_LEVEL: mocks.isolation,
+    MAX: -1,
     default: {
         ConnectionPool: mocks.ConnectionPool,
         Transaction: mocks.Transaction,
-        ISOLATION_LEVEL: mocks.isolation
+        ISOLATION_LEVEL: mocks.isolation,
+        MAX: -1,
+        ...mocks.sqlTypes
     }
 }));
 
@@ -50,8 +73,13 @@ beforeEach(() => {
     vi.clearAllMocks();
     mocks.pool.connect.mockResolvedValue(mocks.pool);
     mocks.pool.close.mockResolvedValue(undefined);
+    mocks.transaction.begin.mockResolvedValue(undefined);
+    mocks.transaction.commit.mockResolvedValue(undefined);
+    mocks.transaction.rollback.mockResolvedValue(undefined);
     mocks.request.query.mockResolvedValue({
         recordset: [{ id: 1, name: 'Ada' }],
+        recordsets: [[{ id: 1, name: 'Ada' }]],
+        output: {},
         rowsAffected: [1]
     });
 });
@@ -93,7 +121,8 @@ it('executes a SELECT and an IN stored procedure through DataSource', async () =
         args: ['Ada']
     })).resolves.toEqual({
         rows: [{ id: 1, name: 'Ada' }],
-        affectedRows: 1
+        affectedRows: 1,
+        resultSets: [[{ id: 1, name: 'Ada' }]]
     });
 
     expect(mocks.request.query).toHaveBeenNthCalledWith(
@@ -109,6 +138,95 @@ it('executes a SELECT and an IN stored procedure through DataSource', async () =
 
     await dataSource.close();
     expect(mocks.pool.close).toHaveBeenCalledOnce();
+});
+
+it('returns typed OUT/INOUT values and every result set from DataSource procedures', async () => {
+    const dataSource = await DataSource.connect({
+        type: 'sqlserver',
+        database: 'tyorm_test',
+        username: 'tyorm_user',
+        password: 'secret',
+        entities: [Staff],
+        providers: { sqlserver: sqlServerProvider }
+    });
+    mocks.request.query.mockResolvedValueOnce({
+        recordset: [{ label: 'staff' }],
+        recordsets: [[{ label: 'staff' }], [{ total: 1 }]],
+        output: { p1: 1, p2: 2 },
+        rowsAffected: [1, 1]
+    });
+
+    await expect(dataSource.executeProcedure({
+        schema: 'dbo',
+        name: 'summarize_staff',
+        args: [
+            'Ada',
+            { mode: 'out', type: { type: 'integer' } },
+            { mode: 'inout', value: 1, type: { type: 'integer' } }
+        ]
+    })).resolves.toEqual({
+        rows: [{ label: 'staff' }],
+        affectedRows: 2,
+        resultSets: [[{ label: 'staff' }], [{ total: 1 }]],
+        outputParameters: [undefined, 1, 2]
+    });
+
+    expect(mocks.request.query).toHaveBeenCalledWith(
+        'EXEC [dbo].[summarize_staff] @p0, @p1 OUTPUT, @p2 OUTPUT'
+    );
+    expect(mocks.request.output).toHaveBeenNthCalledWith(1, 'p1', { kind: 'Int' });
+    expect(mocks.request.output).toHaveBeenNthCalledWith(2, 'p2', { kind: 'Int' }, 1);
+    await dataSource.close();
+});
+
+it('executes procedure calls inside a transaction and rolls back procedure failures', async () => {
+    const dataSource = await DataSource.connect({
+        type: 'sqlserver',
+        database: 'tyorm_test',
+        username: 'tyorm_user',
+        password: 'secret',
+        entities: [Staff],
+        providers: { sqlserver: sqlServerProvider }
+    });
+    const procedureError = new Error('procedure failed');
+    mocks.request.query.mockRejectedValueOnce(procedureError);
+
+    await expect(dataSource.transaction(async scope => {
+        await scope.executeProcedure({
+            name: 'fail_procedure',
+            args: [{ mode: 'out', type: { type: 'integer' } }]
+        });
+    })).rejects.toMatchObject({
+        errors: expect.arrayContaining([procedureError])
+    });
+
+    expect(mocks.transaction.request).toHaveBeenCalledOnce();
+    expect(mocks.pool.request).not.toHaveBeenCalled();
+    expect(mocks.transaction.rollback).toHaveBeenCalledOnce();
+    await dataSource.close();
+});
+
+it('commits successful procedure calls in a transaction', async () => {
+    const dataSource = await DataSource.connect({
+        type: 'sqlserver',
+        database: 'tyorm_test',
+        username: 'tyorm_user',
+        password: 'secret',
+        entities: [Staff],
+        providers: { sqlserver: sqlServerProvider }
+    });
+
+    await expect(dataSource.transaction(scope =>
+        scope.executeProcedure({ name: 'refresh_staff' })
+    )).resolves.toMatchObject({
+        rows: [{ id: 1, name: 'Ada' }],
+        resultSets: [[{ id: 1, name: 'Ada' }]]
+    });
+
+    expect(mocks.transaction.request).toHaveBeenCalledOnce();
+    expect(mocks.pool.request).not.toHaveBeenCalled();
+    expect(mocks.transaction.commit).toHaveBeenCalledOnce();
+    await dataSource.close();
 });
 
 it('executes mutations and Repository.save through DataSource with returned columns', async () => {

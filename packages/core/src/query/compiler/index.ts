@@ -9,5 +9,6 @@ export type {
 export type {
     FunctionCall,
     ProcedureCall,
+    ProcedureParameterType,
     SqlCompiler
 } from './sql-compiler';

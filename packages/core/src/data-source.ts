@@ -152,7 +152,10 @@ export class DataSource {
         if (this.compiler.compileProcedure === undefined) {
             throw new Error('The selected driver does not support SQL procedure calls.');
         }
-        return this.compiler.compileProcedure(call);
+        return {
+            ...this.compiler.compileProcedure(call),
+            procedureCall: call
+        };
     }
 
     private compileFunction(call: FunctionCall): CompiledQuery {

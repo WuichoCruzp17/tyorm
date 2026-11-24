@@ -52,7 +52,12 @@ it('returns rows from functions and procedures and rolls back their writes', asy
 
         const procedure = (label: string) => ({
             schema: 'pg_temp', name: 'add_procedure_entry',
-            args: [label, { mode: 'out' }, { mode: 'out' }, { mode: 'inout', value: "O'Brien" }] as const
+            args: [
+                label,
+                { mode: 'out', type: { type: 'text' } },
+                { mode: 'out', type: { type: 'integer' } },
+                { mode: 'inout', value: "O'Brien", type: { type: 'text' } }
+            ] as const
         });
         await expect(source.executeProcedure(procedure('procedure commit')))
             .resolves.toMatchObject({ rows: [{ stored: 'procedure commit', label_size: 16, message: "O'Brien: procedure commit" }] });

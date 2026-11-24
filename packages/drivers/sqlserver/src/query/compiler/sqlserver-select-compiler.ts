@@ -231,9 +231,20 @@ export class SqlServerSelectCompiler implements SqlCompiler {
         const values: unknown[] = [];
         const argumentsSql = (call.args ?? []).map(argument => {
             if (typeof argument === 'object' && argument !== null && 'mode' in argument) {
-                if (argument.mode === 'out' || argument.mode === 'inout') {
-                    throw new Error('SQL Server OUT and INOUT procedure parameters are not supported yet.');
+                if (argument.mode === 'out') {
+                    values.push(null);
+                    return `@p${values.length - 1} OUTPUT`;
                 }
+                if (argument.mode === 'inout') {
+                    if (argument.value === undefined) {
+                        throw new TypeError('SQL Server INOUT procedure parameters cannot be undefined.');
+                    }
+                    values.push(argument.value);
+                    return `@p${values.length - 1} OUTPUT`;
+                }
+            }
+            if (argument === undefined) {
+                throw new TypeError('SQL Server procedure input parameters cannot be undefined.');
             }
             values.push(argument);
             return `@p${values.length - 1}`;

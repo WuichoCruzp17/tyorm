@@ -40,10 +40,14 @@ implemented. Use a least-privilege account.
   grouping, aggregate, and pagination nodes except vector distance. Pagination
   without an explicit order uses `ORDER BY (SELECT NULL)` and is not stable
   across executions.
-- `DataSource.executeProcedure` supports stored procedures with IN parameters.
-  OUT and INOUT parameters are rejected until their SQL Server type mapping is
-  defined. Scalar function execution is supported; table-valued functions are
-  not currently mapped.
+- `DataSource.executeProcedure` supports IN, typed OUT, and typed INOUT
+  parameters. OUT/INOUT descriptors use Core column types; `rows` contains the
+  first result set, `resultSets` contains all result sets, and
+  `outputParameters` contains values in argument order (with `undefined` at IN
+  positions). Calls inside `DataSource.transaction` use its transaction-bound
+  connection. Real SQL Server integration validation is still pending.
+  Scalar function execution is supported; table-valued functions are not
+  currently mapped.
 - INSERT, UPDATE, DELETE, and `Repository.save` compile to SQL Server
   statements, but real-engine validation is still pending. Returned values use
   the SQL Server `OUTPUT` clause, so tables with enabled triggers are not

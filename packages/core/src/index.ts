@@ -66,6 +66,7 @@ export type {
     SqlDialect,
     FunctionCall,
     ProcedureCall,
+    ProcedureParameterType,
     SqlCompiler
 } from './query/compiler';
 export type {

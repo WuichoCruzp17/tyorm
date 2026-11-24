@@ -186,20 +186,20 @@ it('uses COUNT_BIG to avoid SQL Server COUNT integer overflow', () => {
     });
 });
 
-it('compiles input stored procedure arguments and rejects untyped output arguments', () => {
+it('compiles typed OUT and INOUT procedure arguments with ordered placeholders', () => {
     const compiler = new SqlServerSelectCompiler();
     expect(compiler.compileProcedure({
         schema: 'app',
         name: 'search]staff',
-        args: ['Ada', 2]
+        args: [
+            'Ada',
+            { mode: 'out', type: { type: 'integer' } },
+            { mode: 'inout', value: 2, type: { type: 'integer' } }
+        ]
     })).toEqual({
-        sql: 'EXEC [app].[search]]staff] @p0, @p1',
-        parameters: ['Ada', 2]
+        sql: 'EXEC [app].[search]]staff] @p0, @p1 OUTPUT, @p2 OUTPUT',
+        parameters: ['Ada', null, 2]
     });
-    expect(() => compiler.compileProcedure({
-        name: 'searchStaff',
-        args: [{ mode: 'out' }]
-    })).toThrow('OUT and INOUT');
     expect(compiler.compileFunction({ schema: 'app', name: 'staff_count' })).toEqual({
         sql: 'SELECT [app].[staff_count]() AS [value]',
         parameters: []

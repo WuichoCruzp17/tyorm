@@ -1308,7 +1308,13 @@ it('keeps OUT positions without consuming placeholders for bound inputs', () => 
     expect(compiler.compileProcedure({
         schema: 'odd"schema',
         name: 'get.total',
-        args: [4, { mode: 'out' }, { mode: 'inout', value: "O'Brien" }, null, { mode: 'out' }]
+        args: [
+            4,
+            { mode: 'out', type: { type: 'integer' } },
+            { mode: 'inout', value: "O'Brien", type: { type: 'text' } },
+            null,
+            { mode: 'out', type: { type: 'text' } }
+        ]
     })).toEqual({
         sql: 'CALL "odd""schema"."get.total"($1, NULL, $2, $3, NULL)',
         parameters: [4, "O'Brien", null]

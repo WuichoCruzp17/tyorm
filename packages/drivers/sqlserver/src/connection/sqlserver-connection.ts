@@ -1,7 +1,8 @@
-import sql, { type ConnectionPool, type Transaction } from 'mssql';
+import sql, { type ConnectionPool, type ISqlType, type Transaction } from 'mssql';
 import type {
     DatabaseConnection,
     IsolationLevel,
+    ProcedureParameterType,
     Query,
     QueryResult,
     TransactionOptions
@@ -30,11 +31,53 @@ export class SqlServerConnection implements DatabaseConnection {
         return this.enqueue(async () => {
             this.assertUsable();
             const request = this.transaction?.request() ?? this.pool.request();
-            for (const [index, value] of (query.parameters ?? []).entries()) {
-                if (value === undefined) throw new TypeError('SQL Server query parameters cannot be undefined.');
-                request.input(`p${index}`, toSqlServerValue(value));
+            const procedure = query.procedureCall;
+            if (procedure === undefined) {
+                for (const [index, value] of (query.parameters ?? []).entries()) {
+                    if (value === undefined) throw new TypeError('SQL Server query parameters cannot be undefined.');
+                    request.input(`p${index}`, toSqlServerValue(value));
+                }
+            } else {
+                for (const [index, argument] of (procedure.args ?? []).entries()) {
+                    if (typeof argument === 'object' && argument !== null && 'mode' in argument) {
+                        const type = toSqlServerOutputType(argument.type);
+                        if (argument.mode === 'out') {
+                            request.output(`p${index}`, type);
+                        } else {
+                            request.output(`p${index}`, type, toSqlServerValue(argument.value));
+                        }
+                    } else {
+                        if (argument === undefined) {
+                            throw new TypeError('SQL Server procedure input parameters cannot be undefined.');
+                        }
+                        request.input(`p${index}`, toSqlServerValue(argument));
+                    }
+                }
             }
             const result = await request.query<T>(query.sql);
+            if (procedure !== undefined) {
+                const resultSets = result.recordsets.map(recordset => Array.from(recordset));
+                const procedureArguments = procedure.args ?? [];
+                const hasOutputParameters = procedureArguments.some(argument =>
+                    typeof argument === 'object' && argument !== null && 'mode' in argument
+                );
+                return {
+                    rows: resultSets[0] ?? (result.recordset ? Array.from(result.recordset) : []),
+                    affectedRows: result.rowsAffected.length > 0
+                        ? result.rowsAffected.reduce((total, count) => total + count, 0)
+                        : null,
+                    resultSets,
+                        ...(hasOutputParameters
+                        ? {
+                                outputParameters: procedureArguments.map((argument, index) =>
+                                    typeof argument === 'object' && argument !== null && 'mode' in argument
+                                        ? result.output[`p${index}`]
+                                        : undefined
+                                )
+                        }
+                        : {})
+                };
+            }
             return {
                 rows: result.recordset ? Array.from(result.recordset) : [],
                 affectedRows: result.rowsAffected.length > 0
@@ -131,4 +174,61 @@ function toSqlServerValue(value: unknown): string | number | boolean | bigint | 
     }
     if (value instanceof Uint8Array) return Buffer.from(value);
     throw new TypeError('Unsupported SQL Server parameter value.');
+}
+
+function toSqlServerOutputType({ type, length, precision, scale }: ProcedureParameterType): ISqlType {
+    switch (type) {
+        case 'string':
+            return sql.NVarChar(outputLength(length, 4000, 'string'));
+        case 'text':
+        case 'json':
+            return sql.NVarChar(sql.MAX);
+        case 'integer':
+            return sql.Int();
+        case 'bigint':
+            return sql.BigInt();
+        case 'decimal': {
+            if (precision === undefined || !Number.isSafeInteger(precision) ||
+                precision < 1 || precision > 38) {
+                throw new TypeError('SQL Server decimal procedure parameters require precision between 1 and 38.');
+            }
+            const decimalScale = scale ?? 0;
+            if (!Number.isSafeInteger(decimalScale) || decimalScale < 0 || decimalScale > precision) {
+                throw new TypeError('SQL Server decimal procedure parameter scale must be between 0 and its precision.');
+            }
+            return sql.Decimal(precision, decimalScale);
+        }
+        case 'float':
+            return sql.Float();
+        case 'boolean':
+            return sql.Bit();
+        case 'date':
+            return sql.Date();
+        case 'time':
+            return sql.Time(outputScale(scale));
+        case 'datetime':
+            return sql.DateTime2(outputScale(scale));
+        case 'uuid':
+            return sql.UniqueIdentifier();
+        case 'binary':
+            return sql.VarBinary(outputLength(length, 8000, 'binary'));
+        case 'vector':
+            throw new TypeError('SQL Server procedure parameters do not support the vector type.');
+    }
+}
+
+function outputLength(length: number | undefined, maximum: number, kind: string): number {
+    if (length === undefined) return sql.MAX;
+    if (!Number.isSafeInteger(length) || length < 1 || length > maximum) {
+        throw new TypeError(`SQL Server ${kind} procedure parameter length must be between 1 and ${maximum}.`);
+    }
+    return length;
+}
+
+function outputScale(scale: number | undefined): number {
+    const value = scale ?? 7;
+    if (!Number.isSafeInteger(value) || value < 0 || value > 7) {
+        throw new TypeError('SQL Server time procedure parameter scale must be between 0 and 7.');
+    }
+    return value;
 }

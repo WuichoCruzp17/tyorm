@@ -9,6 +9,7 @@ import type {
 import type { ResolvedMutation } from '../mutation';
 
 import type { QueryValue } from '../ast';
+import type { ColumnType } from '../../metadata';
 
 export interface FunctionCall {
     readonly schema?: string;
@@ -16,13 +17,20 @@ export interface FunctionCall {
     readonly args?: readonly QueryValue[];
 }
 
+export interface ProcedureParameterType {
+    readonly type: ColumnType;
+    readonly length?: number;
+    readonly precision?: number;
+    readonly scale?: number;
+}
+
 export interface ProcedureCall {
     readonly schema?: string;
     readonly name: string;
     readonly args?: readonly (
         | QueryValue
-        | { readonly mode: 'out' }
-        | { readonly mode: 'inout'; readonly value: QueryValue }
+        | { readonly mode: 'out'; readonly type: ProcedureParameterType }
+        | { readonly mode: 'inout'; readonly value: QueryValue; readonly type: ProcedureParameterType }
     )[];
 }
 

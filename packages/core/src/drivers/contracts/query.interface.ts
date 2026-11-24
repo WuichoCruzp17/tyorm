@@ -1,4 +1,6 @@
 
+import type { ProcedureCall } from '../../query/compiler';
+
 export interface Query {
 
     /**
@@ -10,5 +12,10 @@ export interface Query {
      * Positional query parameters.
      */
     readonly parameters?: readonly unknown[];
+
+    /**
+     * Procedure metadata used by drivers that bind typed output parameters.
+     */
+    readonly procedureCall?: ProcedureCall;
 
 }
