@@ -290,6 +290,7 @@ Validación del 20 de noviembre de 2026. Pasaron ambos typecheck, el typecheck d
 8. **Fase 8.1:** arranque, repositorios de lectura, repositorios transaccionales y escritura con save completados.
 9. **Segundo motor:** proveedor SQLite de lectura y escritura implementado. El contrato común de DataSource está verificado en SQLite y PostgreSQL.
 10. Mantener/regresar a pruebas de integración PostgreSQL, especialmente comportamiento tras errores SQL y consultas pendientes en una transacción.
+11. **Fase 8.6 (en curso):** completar y validar JOINs por relaciones en SQLite y revisar la misma cobertura en MySQL frente al comportamiento de PostgreSQL.
 
 ### 8.1 Próxima fase — DataSource y repositorios
 
@@ -417,6 +418,24 @@ Validación del 23 de noviembre de 2026. Pasaron los tres builds y typecheck, el
 Validación del 23 de noviembre de 2026. Pasaron los tres builds y typecheck, el chequeo estricto de las pruebas de PostgreSQL modificadas y 479 pruebas sin omisiones (313 de Core, 159 de PostgreSQL y 7 de SQLite). La integración local verificó dos salidas OUT y la reversión de una escritura dentro del alcance transaccional.
 
 La variante `{ mode: 'inout', value }` vincula el valor inicial y devuelve el actualizado en `rows`. La integración local verificó el valor actualizado junto a dos salidas OUT, en llamadas directas y dentro de una transacción con rollback. Pasaron el build, el typecheck, el chequeo estricto de las pruebas modificadas y las 479 pruebas del workspace.
+
+### 8.6 Fase en curso — JOINs de relaciones en SQLite y MySQL
+
+**Objetivo.** Verificar y completar la compatibilidad de las consultas con JOINs de relaciones en los proveedores SQLite y MySQL, usando PostgreSQL como referencia de comportamiento y sin trasladar lógica específica de dialecto a Core.
+
+**Punto de partida.** La inspección del compilador SQLite encontró generación de JOIN directo y mediante tabla intermedia a partir de los planes resueltos por Core. Sin embargo, las pruebas unitarias SQLite no cubren JOINs y la prueba compartida de paridad solo ejerce una relación `ManyToOne` directa; además, esa suite es de integración y queda excluida por defecto. El compilador MySQL debe revisarse en esta fase y su cobertura de relaciones debe establecerse antes de asumir paridad.
+
+**Alcance.**
+
+- Revisar `ManyToOne`, `OneToMany`, `OneToOne` y `ManyToMany`, en lados propietario e inverso cuando corresponda. Para `ManyToMany`, comprobar ambos sentidos de la tabla intermedia.
+- Validar `INNER JOIN` y `LEFT JOIN`, claves compuestas, JOINs encadenados, selección de columnas de alias relacionados y filtros en `ON` y `WHERE`.
+- Confirmar alias, nombres físicos, identificadores cualificados y el orden de parámetros de `ON`, `WHERE` y paginación en cada dialecto.
+- Añadir pruebas focalizadas de compilación y ejecución SQLite en memoria; ampliar las pruebas unitarias de MySQL y las integraciones con MySQL cuando exista un entorno aislado disponible.
+- Mantener las reglas semánticas y la resolución de relaciones en Core. No introducir carga automática de relaciones en repositorios como parte de esta fase.
+
+**Criterios de aceptación.** Las pruebas deben cubrir cada forma de relación y su orientación relevante, ambos tipos de JOIN, claves compuestas y consultas encadenadas en SQLite y MySQL. Comparar SQL/resultados con la semántica equivalente de PostgreSQL, verificar que los valores sigan enlazados como parámetros y ejecutar typecheck y suites de cada paquete. Registrar qué integraciones reales se ejecutaron y cuáles quedaron excluidas.
+
+Avance del 24 de noviembre de 2026. La inspección confirmó que los compiladores SQLite y MySQL ya emiten JOINs directos y de tabla intermedia a partir de los planes de Core; no fue necesario modificar su SQL de producción. Se añadieron pruebas para `ManyToOne`, `OneToMany`, `OneToOne` y `ManyToMany`, en ambas orientaciones cuando corresponde, incluyendo claves compuestas, JOINs encadenados, `INNER`/`LEFT`, filtros en `ON` y `WHERE`, y orden de parámetros. Las pruebas SQLite ejecutan consultas reales en memoria. Pasaron el typecheck y 12 pruebas de SQLite, el typecheck y 18 pruebas unitarias de MySQL, y las 43 pruebas del compilador SELECT de PostgreSQL. Se agregó una integración MySQL con tablas temporales. El 24 de noviembre se intentó con el opt-in y la confirmación del operador; la configuración la rechazó antes de abrir una conexión porque `MYSQL_TEST_USER` no estaba definido. No se accedió ni modificó la base. Falta configurar un usuario de pruebas no administrativo con permisos mínimos y repetir la integración MySQL antes de cerrar la fase.
 
 ## 9. Comandos de validación
 
