@@ -294,6 +294,7 @@ Validación del 20 de noviembre de 2026. Pasaron ambos typecheck, el typecheck d
 12. **Fase 8.7:** integraciones PostgreSQL completadas y registradas según la sección 8.7.
 13. **Fase 8.8:** validación dinámica de seguridad completada y registrada según la sección 8.8.
 14. **Fase 8.9:** revisión de superficie pública y encapsulación completada según la sección 8.9.
+15. **Fase 8.10:** implementar el driver de SQL Server conforme a las entregas y criterios de la sección 8.10.
 
 ### 8.1 Próxima fase — DataSource y repositorios
 
@@ -491,6 +492,7 @@ La auditoría inicial de `pnpm audit` detectó 6 avisos en dependencias de desar
 - Evaluar constructores y métodos que permitan crear o invocar drivers, conexiones, compiladores, resolvers, modelos de metadatos, contextos transaccionales u otros componentes internos por fuera de los flujos previstos. Mantener pública cualquier extensión que sea intencional y documentada; ocultar únicamente las rutas de acceso que no formen parte del contrato.
 - Usar exportaciones de módulos, `package.json#exports`, visibilidad de TypeScript y encapsulación de constructores o miembros donde corresponda. No tratar `private`/`protected` de TypeScript como una barrera de seguridad en tiempo de ejecución ni afirmar que ocultar una clase protege contra código arbitrario que ya se ejecuta dentro del mismo proceso.
 - Revisar por separado los límites que sí deben aplicar en tiempo de ejecución: validación de entradas, estado abierto/cerrado, propiedad del alcance transaccional y restricciones de operaciones. No reemplazar esos controles por una API menos visible.
+- Para futuras modificaciones de exportaciones o encapsulación en un driver, seguir también el skill [`driver-api-boundaries`](./.github/skills/driver-api-boundaries/SKILL.md).
 - Aplicar el skill [`security-phase-gate`](./.github/skills/security-phase-gate/SKILL.md) a la fase: pruebas focalizadas para las rutas públicas y los límites afectados, más build, typecheck y regresión de los paquetes modificados.
 
 **Criterios de aceptación.** Entregar un inventario de símbolos públicos con su clasificación y justificación; confirmar que los consumidores pueden seguir importar y usar la API soportada; verificar que los símbolos internos seleccionados no se exportan por las entradas públicas ni por rutas profundas no autorizadas; y comprobar que los intentos de usar operaciones fuera de su ciclo de vida o alcance siguen fallando explícitamente. Ejecutar pruebas de importación/compilación desde un consumidor externo o fixture equivalente, builds, typecheck y pruebas focalizadas. Registrar incompatibilidades inevitables, limitaciones y cualquier riesgo que no pueda resolverse mediante encapsulación.
@@ -499,6 +501,64 @@ Validación del 24 de noviembre de 2026. La revisión de los cuatro puntos de en
 
 Pasaron los cuatro typecheck y builds, las pruebas del workspace (467: 313 Core, 124 PostgreSQL, 18 MySQL y 12 SQLite) y los typecheck de las guías Stage 3 y legacy. La primera regresión detectó fixtures que aún importaban `ensureSymbolMetadata` desde la raíz; se migraron al subpath `@tyorm/core/register` y la ejecución final pasó. No se modificaron manifiestos ni lockfiles; no correspondía repetir `pnpm audit` en esta fase. Las integraciones contra bases reales no se ejecutaron porque el cambio afecta exportaciones, no comportamiento de SQL o transacciones.
 
+### 8.10 Próxima fase — Driver de SQL Server
+
+**Objetivo.** Incorporar un proveedor SQL Server consumible desde `DataSource`, reutilizando los contratos de Core y manteniendo en el driver toda la generación de T-SQL y el comportamiento específico del motor. El paquete previsto es `@tyorm/sqlserver`, con proveedor `sqlServerProvider` y tipo de configuración `sqlserver`; confirmar estos nombres contra las convenciones reales al iniciar la implementación.
+
+**Punto de partida.** Core ya proporciona contratos comunes de driver, conexión, proveedor y compilador, además de consultas, transacciones y mutaciones. PostgreSQL, MySQL y SQLite sirven como referencias de estructura y paridad, no como fuentes para copiar particularidades de dialecto. La fase no debe agregar lógica SQL Server a Core salvo que se demuestre que falta un contrato común.
+
+**Entregas incrementales.**
+
+#### 8.10.1 — Diseño, paquete y ciclo de vida
+
+- Revisar los contratos reales de Core y los límites públicos establecidos en la sección 8.9 y el skill [`driver-api-boundaries`](./.github/skills/driver-api-boundaries/SKILL.md).
+- Elegir la biblioteca cliente y documentar su versión mínima de Node, compatibilidad con las versiones objetivo de SQL Server/Azure SQL, mantenimiento, tipos de parámetros, pool, transacciones y soporte TLS. Añadir solo dependencias necesarias y revisar avisos de seguridad al modificar manifiestos o lockfile.
+- Crear la estructura y los exports mínimos del paquete `@tyorm/sqlserver`; implementar la fábrica del proveedor y conexión/configuración requeridas por `DataSource`, siguiendo el patrón explícito de registro de proveedores sin introducir una carga automática de paquetes en Core.
+- Implementar adquisición, ejecución parametrizada, transacciones ligadas a una conexión, liberación/cierre del pool y propagación de errores originales. Definir estados y comportamiento ante fallo de conexión, consulta, rollback y cierre.
+- Definir configuración de conexión sin registrar credenciales. Mantener la validación TLS de certificado e identidad del servidor; cualquier opción para aceptar certificados no confiables debe ser explícita y no convertirse en valor predeterminado.
+
+**Criterios de cierre.** Pruebas unitarias de proveedor, configuración, ciclo de vida, parámetros, transacción y errores; typecheck/build del paquete; prueba de consumo mediante `DataSource`. No habilitar integración real hasta confirmar una instancia desechable y una cuenta de prueba con privilegios mínimos.
+
+#### 8.10.2 — Compilación SELECT y relaciones
+
+- Implementar el dialecto T-SQL con corchetes para identificadores, incluidos nombres cualificados y escapado de `]`; mantener todos los valores como parámetros del cliente y nunca interpolarlos en SQL.
+- Compilar las expresiones SELECT soportadas por Core: selección/proyección, predicados, aliases, DISTINCT, GROUP BY, HAVING, agregados, ORDER BY y joins directos y de tabla intermedia.
+- Resolver la paginación con la sintaxis y restricciones de SQL Server. Probar límite/desplazamiento, cero, desplazamiento sin límite y casos sin orden explícito; cualquier requisito de orden debe conservar el contrato observable de los otros proveedores o quedar documentado como limitación, sin alterar la semántica común en Core para satisfacer un solo dialecto.
+- Preservar el orden de enlace de parámetros entre JOIN/ON, WHERE, HAVING, ordenación y paginación. Manejar correctamente alias y nombres físicos, incluyendo identificadores reservados y nombres con caracteres especiales.
+- Definir y probar la conversión de tipos de resultados del cliente (incluidos `bigint`, `decimal`, fechas, booleanos/bit, UUID y valores nulos) sin pérdida silenciosa de precisión.
+- Rechazar explícitamente las expresiones no soportadas por SQL Server, en vez de emitir SQL incompleto o devolver resultados alternativos.
+
+**Criterios de cierre.** Pruebas unitarias de compilación con SQL y parámetros esperados, pruebas de ejecución contra SQL Server para SELECT y relaciones, y comparación de resultados con la semántica compartida de la suite de paridad. Cubrir INNER/LEFT, relaciones en ambas orientaciones, claves compuestas, JOINs encadenados y filtros ON/WHERE.
+
+#### 8.10.3 — Mutaciones, claves y `Repository.save`
+
+- Compilar INSERT, UPDATE y DELETE con parámetros, nombres físicos, validación de metadatos y requisitos de clave primaria completa.
+- Diseñar la recuperación de valores generados y filas afectadas con las capacidades reales de SQL Server, incluyendo claves `IDENTITY` y columnas escalares retornadas. Probar triggers y restricciones de SQL Server que afecten el mecanismo de retorno elegido.
+- Implementar `Repository.save` para claves generadas y asignadas, manteniendo el contrato de Core sobre retorno de entidad, columnas actualizables y error cuando una actualización no encuentra fila.
+- SQL Server no ofrece `ON CONFLICT` de PostgreSQL. Definir una estrategia de inserción/actualización segura ante concurrencia, probar conflictos en una instancia real bajo el nivel de aislamiento documentado y no asumir que `MERGE` equivale a un UPSERT atómico sin evidencia.
+- Verificar rollback, conservación del error original, filas afectadas, claves compuestas, campos nulos/default y precisión de los valores numéricos.
+
+**Criterios de cierre.** Pruebas unitarias del SQL y enlace de parámetros, más integraciones aisladas para claves generadas/asignadas, update/delete, restricciones, commit/rollback y escrituras concurrentes. No usar tablas ni cuentas de producción.
+
+#### 8.10.4 — Rutinas y capacidades específicas
+
+- La ejecución de procedimientos almacenados es requisito de la primera versión utilizable del driver. Implementar `SqlCompiler.compileProcedure` para que `DataSource.executeProcedure` y `TransactionScope.executeProcedure` ejecuten el procedimiento en la conexión correspondiente; dentro de una transacción deben usar la misma conexión y alcance.
+- Respetar `ProcedureCall`: argumentos IN como valores, `{ mode: 'out' }` y `{ mode: 'inout', value }` en su posición original. Vincular todos los valores como parámetros; validar y citar separadamente esquema y nombre del procedimiento, pues los identificadores no son parámetros.
+- Mapear sin pérdida los parámetros OUT/INOUT, los conjuntos de resultados y las filas afectadas del cliente a `QueryResult`. Como `QueryResult` expone `rows` y `affectedRows`, decidir y probar el contrato para varios conjuntos de resultados antes de cerrar esta entrega: conservarlos con un cambio mínimo de contrato común o rechazar explícitamente los casos que no puedan representarse; nunca descartar resultados silenciosamente.
+- Probar procedimientos sintéticos con parámetros IN, OUT e INOUT, uno y varios conjuntos de resultados según el contrato elegido, errores del procedimiento y llamadas directas y transaccionales con commit/rollback. Confirmar liberación de recursos y preservación del error original.
+- Evaluar por separado `compileFunction` y `DataSource.executeFunction` para funciones escalares y tabulares de SQL Server. Implementarlas solo si el contrato común las representa correctamente; en caso contrario, producir un error explícito y documentar la limitación, sin confundir su sintaxis con la ejecución de procedimientos.
+
+**Criterios de cierre.** Pruebas unitarias de compilación y enlace de parámetros, e integración contra procedimientos sintéticos en una base desechable para todos los modos admitidos y el alcance transaccional. La ejecución de procedimientos almacenados no puede diferirse de la primera versión; las funciones pueden quedar fuera únicamente si las llamadas fallan de forma explícita y se documenta el límite.
+
+#### 8.10.5 — Paridad, seguridad y distribución
+
+- Ejecutar la paridad de `DataSource`, repositorios y transacciones entre SQL Server y los proveedores existentes, cubriendo consultas, mutaciones, relaciones, paginación y errores. Registrar las diferencias legítimas del motor sin esconder incompatibilidades.
+- Ejecutar integraciones solo tras verificar de forma independiente que la base es aislada y desechable y que la cuenta no es administrativa y tiene permisos mínimos. Usar datos sintéticos, limpieza acotada y TLS verificado cuando corresponda.
+- Completar README del driver con instalación, configuración, TLS, proveedor, tipos y limitaciones, comandos de prueba y requisitos de integración; documentar cualquier actualización del README raíz o de Core como parte de la implementación.
+- Verificar `typecheck`, build y pruebas del paquete y del workspace; empaquetar el tarball e instalarlo en una aplicación temporal externa al monorepo para comprobar exports, declaraciones, carga del proveedor y una operación real.
+- Registrar versiones de Node y SQL Server, pruebas aprobadas/fallidas/omitidas, auditoría de dependencias cuando aplique, limitaciones y riesgos residuales. Seguir `security-phase-gate` y `driver-api-boundaries`.
+
+**Criterios globales de aceptación.** El paquete funciona con el `DataSource` público sin acoplar Core a SQL Server; todos los valores se enlazan, los identificadores se citan con el dialecto, el pool y las transacciones respetan el ciclo de vida común, y las capacidades no compatibles fallan explícitamente. Builds, typechecks, suites del paquete, pruebas de paridad y validación de distribución deben pasar. Las integraciones reales omitidas y sus causas se reportan por separado; no declarar el driver completo ni seguro solo por pasar pruebas unitarias.
 ## 9. Comandos de validación
 
 Ejecutar desde la raíz del monorepo, confirmando que los scripts existen:
