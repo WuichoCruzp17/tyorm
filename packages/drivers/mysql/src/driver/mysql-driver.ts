@@ -1,6 +1,9 @@
-import { createPool, type Pool } from 'mysql2/promise';
+import { isIP } from 'node:net';
+import { createPool, type Pool, type PoolOptions } from 'mysql2/promise';
 import type { DatabaseDriver, DriverConfig } from '@tyorm/core';
 import { MySQLConnection } from '../connection/mysql-connection';
+
+type MySQLSslOptions = Exclude<NonNullable<PoolOptions['ssl']>, string>;
 
 export class MySQLDriver implements DatabaseDriver {
     readonly name = 'mysql';
@@ -10,15 +13,22 @@ export class MySQLDriver implements DatabaseDriver {
     async connect(config: DriverConfig): Promise<void> {
         if (this.pool || this.closing) throw new Error('MySQL driver is already connected or closing.');
         if (config.type !== this.name) throw new Error('MySQL driver requires type "mysql".');
+        const ssl = verifiedSslOptions(config.driverOptions?.ssl);
+        const host = config.host ?? 'localhost';
+        if (ssl && isIP(host)) {
+            throw new Error('MySQL TLS requires a DNS hostname to verify the server identity.');
+        }
+
         const pool = createPool({
-            host: config.host ?? 'localhost',
+            host,
             port: config.port ?? 3306,
             user: config.username ?? 'root',
             ...(config.password === undefined ? {} : { password: config.password }),
             database: config.database,
             connectionLimit: config.pool?.max ?? 10,
             idleTimeout: config.pool?.idleTimeoutMs ?? 60_000,
-            supportBigNumbers: true
+            supportBigNumbers: true,
+            ...(ssl === undefined ? {} : { ssl })
         });
         this.pool = pool;
         const connection = await pool.getConnection();
@@ -57,4 +67,13 @@ export class MySQLDriver implements DatabaseDriver {
         });
         return this.closing;
     }
+}
+
+function verifiedSslOptions(value: unknown): MySQLSslOptions | undefined {
+    if (value === undefined) return undefined;
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+        throw new TypeError('MySQL driverOptions.ssl must be an SSL options object.');
+    }
+
+    return { ...value, rejectUnauthorized: true, verifyIdentity: true };
 }
