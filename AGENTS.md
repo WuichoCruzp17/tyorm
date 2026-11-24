@@ -450,3 +450,42 @@ Al recibir una tarea:
 ### Primera instrucción sugerida para Codex
 
 > Lee `AGENTS.md` y analiza el estado real del monorepo TyORM sin modificar archivos. Enfócate en `PostgresSelectCompiler`, `QuerySemanticResolver`, `JoinConditionResolver`, el ensamblaje de `RelationMetadata.joinColumns` y `tests/postgres-select-compiler.test.ts`. Explica cómo construir un fixture válido `User.department -> Department` con la API existente y cómo cerrar la fase 5.2.2.6.1. Señala cualquier discrepancia entre el documento y el repositorio.
+
+## 11. Plan para validar la seguridad
+
+Aplicar este proceso a cambios de seguridad y revisiones periódicas del monorepo. La revisión debe basarse en código, configuración y pruebas reales; distinguir vulnerabilidades confirmadas de recomendaciones de endurecimiento y no declarar el sistema seguro solo porque pasen las pruebas.
+
+### 11.1 Alcance y entorno
+
+1. Revisar Core y todos los drivers (`postgres`, `mysql`, `sqlite`), incluidos ejemplos, manifiestos, lockfile, configuración de pruebas y archivos ignorados.
+2. Identificar entradas no confiables, límites de confianza, datos sensibles y operaciones que modifican estado en base de datos.
+3. Ejecutar validaciones dinámicas únicamente en bases aisladas y datos sintéticos. No usar credenciales de producción ni correr pruebas destructivas contra bases de datos reales.
+
+### 11.2 Prioridades de revisión estática
+
+- **SQL e identificadores:** confirmar que los valores se vinculan como parámetros y que esquemas, tablas, columnas, aliases y nombres de rutinas se validan o citan con el dialecto correspondiente.
+- **Procedimientos almacenados:** revisar parámetros `IN`, `OUT` e `INOUT`, resultados, variables de sesión, limpieza después de errores y serialización en la conexión.
+- **Transacciones y recursos:** comprobar preservación de errores originales, rollback, estado de conexiones, liberación del pool y recuperación tras fallos.
+- **Configuración y secretos:** buscar credenciales en archivos rastreados, ejemplos, logs y artefactos; verificar `.gitignore` y el contenido de los paquetes distribuidos.
+- **TLS:** verificar el cifrado y la autenticación del servidor. En MySQL, si se configura `driverOptions.ssl`, el driver debe mantener la verificación de CA y hostname; los despliegues con bases remotas deben configurar TLS explícitamente. Decidir y documentar por separado si la política del producto exige hacerlo obligatorio para conexiones remotas.
+
+Registrar únicamente hallazgos accionables con evidencia, severidad, confianza, precondiciones e impacto. No reportar como vulnerabilidad una posibilidad sin demostrar cómo se alcanza desde una entrada o configuración real.
+
+### 11.3 Validación con pruebas
+
+- Añadir casos focalizados para entradas con comillas y caracteres especiales, identificadores adversariales, parámetros inválidos y errores de rutinas.
+- Confirmar que valores de usuario nunca alteren la estructura del SQL y que los fallos no dejen transacciones, variables de sesión o conexiones en estado inseguro.
+- Para TLS, probar un certificado/CA válida y rechazar una CA no confiable o un hostname que no corresponda. No deshabilitar la validación para hacer pasar las pruebas.
+- Ejecutar `pnpm typecheck`, `pnpm build` y `pnpm test`, además de las pruebas focalizadas del paquete afectado. Registrar aprobadas, fallidas y omitidas por separado.
+
+Validación TLS MySQL del 23 de noviembre de 2026: OpenSSL confirmó una conexión TLS 1.3 con la CA de prueba y `localhost`, y rechazó un hostname distinto. Una prueba focalizada de TyORM pasó 3 casos: conexión con CA confiable y cipher de sesión presente, rechazo de CA incorrecta y rechazo de hosts IP al exigir verificación de identidad DNS. El servicio MySQL necesitó permiso de lectura para `NT AUTHORITY\NETWORK SERVICE` sobre la carpeta y los tres archivos TLS requeridos; la clave privada de la CA no se compartió con el servicio.
+
+### 11.4 Integraciones, dependencias y distribución
+
+1. Verificar los drivers contra instancias aisladas con permisos mínimos y configuraciones representativas, incluido MySQL con TLS si se modifica conexión o autenticación.
+2. Revisar dependencias directas y transitivas con las herramientas de auditoría aprobadas para el entorno, evaluando impacto y versiones efectivamente usadas.
+3. Inspeccionar tarballs y artefactos publicados para asegurar que no incluyan `.env`, claves privadas, certificados confidenciales, contraseñas ni datos de pruebas.
+
+### 11.5 Cierre
+
+Priorizar correcciones por severidad y confianza, aplicar cambios quirúrgicos y añadir pruebas de regresión. Repetir las validaciones afectadas y documentar riesgos residuales, limitaciones del análisis y cualquier decisión pendiente. Una revisión estática no sustituye pruebas de integración ni certifica la configuración de cada despliegue.
