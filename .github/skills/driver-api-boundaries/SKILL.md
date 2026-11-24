@@ -103,6 +103,12 @@ At minimum, assess and test:
 - Engine value mappings and precision for nulls, large integers, decimals,
   dates, booleans, UUIDs, and generated values; document intentional
   engine-specific differences.
+- Optional and advanced driver configuration, including pool sizing, idle and
+  acquisition timeouts, connection/request timeouts, retries, keepalive, and
+  vendor-specific options. For every option, verify whether it is supported,
+  its effective default, validation, and exact semantics. Do not silently
+  ignore shared Core options or claim that two similarly named timeouts have
+  equivalent behavior across engines.
 - Connection security and configuration, including TLS identity validation,
   secret handling, and safe defaults. Run real-engine tests only against an
   independently verified disposable database and a least-privilege test
@@ -116,6 +122,9 @@ new driver complete.
 
 Add focused coverage when a public surface changes:
 
+- Test advanced configuration that affects connection limits, waiting,
+  expiration, retries, or security; document unsupported options and the
+  engine/client-library behavior they leave to defaults.
 - Assert intended package-root exports remain available and selected internal
   symbols are absent.
 - Verify supported package imports work and unsupported deep imports fail

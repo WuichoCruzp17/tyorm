@@ -558,6 +558,21 @@ Pasaron los cuatro typecheck y builds, las pruebas del workspace (467: 313 Core,
 - Verificar `typecheck`, build y pruebas del paquete y del workspace; empaquetar el tarball e instalarlo en una aplicación temporal externa al monorepo para comprobar exports, declaraciones, carga del proveedor y una operación real.
 - Registrar versiones de Node y SQL Server, pruebas aprobadas/fallidas/omitidas, auditoría de dependencias cuando aplique, limitaciones y riesgos residuales. Seguir `security-phase-gate` y `driver-api-boundaries`.
 
+#### 8.10.6 — Límites y tiempos de espera del pool
+
+**Objetivo.** Completar y validar el control de concurrencia y el retiro de conexiones inactivas de SQL Server, y hacer explícito qué opciones comunes de timeout se aplican. Esta entrega debe distinguir el máximo de conexiones, el tiempo de adquisición, los timeouts de conexión/consulta y el tiempo de inactividad; no son controles intercambiables.
+
+**Punto de partida.** `SqlServerDriver` ya aplica `pool.max`, `pool.min` y, si se configura, `pool.idleTimeoutMs` a `mssql`. `pool.acquireTimeoutMs` está definido por Core, pero actualmente no se aplica en este driver. La fase debe verificar las semánticas reales de la versión de `mssql` utilizada antes de elegir un mapeo o declarar una opción no soportada.
+
+- Mantener `pool.max` como límite por instancia del pool y validar la espera de solicitudes cuando se alcanza; documentar que el límite no es global entre `DataSource` o procesos.
+- Verificar que `pool.idleTimeoutMs` retire conexiones inactivas según el comportamiento de `mssql`, sin interrumpir consultas activas ni conexiones retenidas por transacciones. Documentar el valor predeterminado efectivo de la biblioteca cuando la opción se omite.
+- Implementar el comportamiento de `pool.acquireTimeoutMs` solo mediante una opción soportada por la biblioteca y con semántica comprobada. Si `mssql` no ofrece el contrato necesario, rechazar explícitamente una configuración no soportada o definir con claridad la limitación; no ignorar silenciosamente la opción.
+- Mantener separados los timeouts de establecimiento de conexión y de ejecución de consultas (`connectionTimeoutMs` y `requestTimeoutMs`); validar valores y errores de expiración sin ocultar el error original ni dejar conexiones/transacciones en estado reutilizable incorrecto.
+- Añadir pruebas focalizadas para valores inválidos, configuración efectiva del pool, límite de conexiones, expiración de espera/inactividad cuando sea verificable y cierre/rollback con operaciones pendientes. Ejecutar integración solo contra una instancia desechable verificada.
+- Actualizar los README de SQL Server y raíz con las opciones admitidas, defaults comprobados, diferencias y limitaciones. No afirmar compatibilidad con una opción común si el driver no la honra.
+
+**Criterios de cierre.** Las pruebas demuestran el límite y el comportamiento de timeout observables, pasan el typecheck, build y suites SQL Server afectadas, y documentan exactamente qué opciones de Core se respetan. Si una garantía no puede implementarse con `mssql`, el API falla explícitamente ante la opción no soportada y los README explican la alternativa y el límite.
+
 **Criterios globales de aceptación.** El paquete funciona con el `DataSource` público sin acoplar Core a SQL Server; todos los valores se enlazan, los identificadores se citan con el dialecto, el pool y las transacciones respetan el ciclo de vida común, y las capacidades no compatibles fallan explícitamente. Builds, typechecks, suites del paquete, pruebas de paridad y validación de distribución deben pasar. Las integraciones reales omitidas y sus causas se reportan por separado; no declarar el driver completo ni seguro solo por pasar pruebas unitarias.
 
 Avance del 24 de noviembre de 2026. La entrega 8.10.1 quedó implementada con el paquete `@tyorm/sqlserver`, proveedor `sqlServerProvider`, pool del cliente `mssql@12.8.1` y tipos `@types/mssql@12.3.0`. El lockfile resuelve `tedious@20.4.3`, que requiere Node 22; por eso el paquete declara Node `>=22`. La autenticación inicial es SQL Login y TLS cifra y valida certificados por defecto. El driver y la compilación SELECT inicial ya se conectan por `DataSource`; la entrega 8.10.2 sigue en curso.

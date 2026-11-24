@@ -1,6 +1,6 @@
 # TyORM
 
-TyORM is a TypeScript ORM inspired by Java Persistence API (JPA). It combines decorator-based entity metadata with an explicit query API for building parameterized SQL. Use `DataSource` with the PostgreSQL, MySQL, or SQLite provider to query registered entities and write through repositories. Database-independent query semantics, relationship resolution, projections, and transaction orchestration live in Core.
+TyORM is a TypeScript ORM inspired by Java Persistence API (JPA). It combines decorator-based entity metadata with an explicit query API for building parameterized SQL. Use `DataSource` with the PostgreSQL, MySQL, or SQLite provider to query registered entities and write through repositories. A SQL Server adapter is also available but is still in progress. Database-independent query semantics, relationship resolution, projections, and transaction orchestration live in Core.
 
 ## Supported databases
 
@@ -9,16 +9,17 @@ TyORM is a TypeScript ORM inspired by Java Persistence API (JPA). It combines de
 | PostgreSQL | [`@tyorm/postgres`](packages/drivers/postgres) `0.1.0` | `pg` `^8.16.3` in the package manifest, with `8.23.1` resolved by the workspace lockfile.         |
 | MySQL      | [`@tyorm/mysql`](packages/drivers/mysql) `0.1.0`       | `mysql2` `^3.0.0`, with `3.24.6` resolved by the workspace lockfile.                              |
 | SQLite     | [`@tyorm/sqlite`](packages/drivers/sqlite) `0.1.0`     | Built-in `node:sqlite`. The package requires Node.js 22.16+ within the 22.x line, or Node.js 24+. |
+| SQL Server | [`@tyorm/sqlserver`](packages/drivers/sqlserver) `0.1.0` (in progress) | `mssql` `12.8.1`. The package requires Node.js 22 or later. |
 
 The TyORM version identifies the adapter package. For PostgreSQL, `pg` has its own version. For SQLite, the SQLite engine version comes from the Node.js runtime and can be checked with `SELECT sqlite_version()`. The workspace validation on Node.js 26.13.0 used SQLite 3.54.0.
 
-PostgreSQL and SQLite support SELECT queries, repository reads and writes, and transactions through `DataSource`. MySQL also supports SELECT queries, repository reads and writes, and transactions.
+PostgreSQL, MySQL, and SQLite support SELECT queries, repository reads and writes, and transactions through `DataSource`. The SQL Server adapter is in progress; see its [README](packages/drivers/sqlserver/README.md) for its current capabilities and limitations.
 
 ## Node.js compatibility
 
 The workspace has passed `pnpm typecheck` and `pnpm test` on Node.js 22.16.0, 24.22.3, and 26.13.1. These runs used the default test configuration, which excludes database integration tests.
 
-The `@tyorm/sqlite` package declares `^22.16.0 || >=24.0.0` in its `engines` field because it uses the built-in `node:sqlite` module. The Core, PostgreSQL, and MySQL packages do not currently declare Node.js `engines` ranges; the versions above are the versions verified for the workspace.
+The `@tyorm/sqlite` package declares `^22.16.0 || >=24.0.0` in its `engines` field because it uses the built-in `node:sqlite` module. The `@tyorm/sqlserver` package requires Node.js `>=22`. The Core, PostgreSQL, and MySQL packages do not currently declare Node.js `engines` ranges; the versions above are the versions verified for the workspace.
 
 ## Packages and architecture
 
@@ -28,6 +29,7 @@ The `@tyorm/sqlite` package declares `^22.16.0 || >=24.0.0` in its `engines` fie
 | [`@tyorm/postgres`](packages/drivers/postgres) | The PostgreSQL provider, SELECT and mutation compilation, connection pooling through `pg`, and PostgreSQL transaction and error handling.                                                               |
 | [`@tyorm/mysql`](packages/drivers/mysql)       | The MySQL provider, SELECT and mutation compilation, connection pooling through `mysql2`, and MySQL transaction handling.                                                                               |
 | [`@tyorm/sqlite`](packages/drivers/sqlite)     | The SQLite provider, SELECT and mutation compilation, and transaction management over a single `node:sqlite` connection.                                                                                |
+| [`@tyorm/sqlserver`](packages/drivers/sqlserver) | SQL Server provider and initial T-SQL SELECT compiler; implementation is in progress. |
 
 ## Connection capacity and pooling
 
@@ -45,7 +47,11 @@ increase the total number of open database connections.
 
 At a pooled driver's connection limit, additional requests wait according to
 that driver's pool behavior. See each driver README for lifecycle details and
-configuration examples.
+configuration examples. `idleTimeoutMs` controls how long an unused pooled
+connection may remain before the underlying driver retires it; it does not
+time out an active query or a connection held by a transaction. SQLite has no
+idle-pool timeout because it keeps one database handle open until the
+`DataSource` closes.
 
 ## Package documentation
 
@@ -53,6 +59,7 @@ configuration examples.
 - [`@tyorm/postgres`: PostgreSQL configuration and driver development](packages/drivers/postgres/README.md)
 - [`@tyorm/mysql`: MySQL configuration and driver development](packages/drivers/mysql/README.md)
 - [`@tyorm/sqlite`: SQLite configuration and driver development](packages/drivers/sqlite/README.md)
+- [`@tyorm/sqlserver`: SQL Server configuration and current implementation status](packages/drivers/sqlserver/README.md)
 
 ### Choose and install one driver
 
