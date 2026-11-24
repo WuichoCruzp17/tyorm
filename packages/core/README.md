@@ -59,6 +59,8 @@ TypeScript's `private` and `protected` modifiers primarily constrain type-checke
 
 `DatabaseConnection` and `TransactionManager.transaction` are intentional low-level APIs. A connection can execute caller-supplied SQL and does not apply the entity/AST validation performed by `DataSource`. Keep connection and driver handles within trusted application code; prefer `DataSource` and repositories for ordinary application operations.
 
+For future driver export or encapsulation changes, follow the [`driver-api-boundaries` skill](../../.github/skills/driver-api-boundaries/SKILL.md).
+
 ## Extension model
 
 `DataSource` accepts a provider factory for the configured engine. A provider returns a compatible driver and compiler. A custom driver can implement the Core contracts without changing Core's query semantics; a compiler handles dialect-specific SQL and placeholders.
