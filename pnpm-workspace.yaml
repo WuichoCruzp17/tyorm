@@ -1,3 +1,4 @@
 packages:
   - "packages/*"
   - "packages/drivers/*"
+  - "packages/batch-sources/*"
