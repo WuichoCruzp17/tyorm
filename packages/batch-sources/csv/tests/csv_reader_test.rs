@@ -349,17 +349,10 @@ fn should_track_multiline_crlf_records() {
 }
 
 #[test]
-fn should_track_multiline_headers() {
+fn should_reject_multiline_headers() {
     let data = concat!("id,\"Customer\nName\"\n", "1,Luis\n", "2,Ana\n");
 
-    let mut reader = CsvReader::new(data.as_bytes(), CsvReaderOptions::default()).unwrap();
+    let result = CsvReader::new(data.as_bytes(), CsvReaderOptions::default());
 
-    let first = reader.next_record().unwrap().unwrap();
-    let second = reader.next_record().unwrap().unwrap();
-
-    assert_eq!(first.position.line_start, 3);
-    assert_eq!(first.position.line_end, 3);
-
-    assert_eq!(second.position.line_start, 4);
-    assert_eq!(second.position.line_end, 4);
+    assert!(matches!(result, Err(CsvError::InvalidHeaders { .. })));
 }

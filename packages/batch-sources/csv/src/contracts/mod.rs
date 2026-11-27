@@ -9,3 +9,6 @@ pub use chunk::*;
 pub use options::*;
 pub use position::*;
 pub use record::*;
+pub mod header;
+
+pub use header::CsvHeaders;

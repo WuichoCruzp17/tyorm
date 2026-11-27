@@ -4,14 +4,18 @@ use std::path::Path;
 
 use csv::{Reader, ReaderBuilder, StringRecord};
 
-use crate::contracts::{CsvEncoding, CsvPosition, CsvReaderOptions, CsvTrim, RawBatchRecord};
-
 use crate::errors::{CsvError, CsvResult};
+
+use crate::contracts::{
+    CsvEncoding, CsvHeaders, CsvPosition, CsvReaderOptions, CsvTrim, RawBatchRecord,
+};
+
+use super::header_resolver::CsvHeaderResolver;
 
 pub struct CsvReader<R: Read> {
     reader: Reader<R>,
     options: CsvReaderOptions,
-    headers: Option<Vec<String>>,
+    headers: Option<CsvHeaders>,
     buffer: StringRecord,
     records_read: u64,
     next_line: u64,
@@ -77,7 +81,9 @@ impl<R: Read> CsvReader<R> {
 
             self.next_line += embedded_line_breaks + 1;
 
-            self.headers = Some(self.buffer.iter().map(str::to_owned).collect());
+            let names: Vec<String> = self.buffer.iter().map(str::to_owned).collect();
+
+            self.headers = Some(CsvHeaderResolver::resolve(names, &self.options)?);
         } else {
             self.finished = true;
         }
@@ -152,7 +158,31 @@ impl<R: Read> CsvReader<R> {
     }
 
     pub fn headers(&self) -> Option<&[String]> {
-        self.headers.as_deref()
+        self.headers.as_ref().map(CsvHeaders::names)
+    }
+
+    pub fn header_metadata(&self) -> Option<&CsvHeaders> {
+        self.headers.as_ref()
+    }
+
+    pub fn column_index(&self, name: &str) -> Option<usize> {
+        self.headers
+            .as_ref()
+            .and_then(|headers| headers.get_index(name))
+    }
+
+    pub fn column_name(&self, index: usize) -> Option<&str> {
+        self.headers
+            .as_ref()
+            .and_then(|headers| headers.get_name(index))
+    }
+
+    pub fn column_count(&self) -> Option<usize> {
+        self.headers.as_ref().map(CsvHeaders::len)
+    }
+
+    pub fn has_column(&self, name: &str) -> bool {
+        self.column_index(name).is_some()
     }
 
     pub fn options(&self) -> &CsvReaderOptions {
