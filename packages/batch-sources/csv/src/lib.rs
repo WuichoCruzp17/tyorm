@@ -1,12 +1,12 @@
 use napi_derive::napi;
 pub mod contracts;
-
-pub use contracts::*;
-
 pub mod errors;
+pub mod parser;
 pub mod validation;
 
+pub use contracts::*;
 pub use errors::*;
+pub use parser::*;
 pub use validation::*;
 
 #[napi]
