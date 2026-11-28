@@ -10,6 +10,8 @@ use crate::contracts::{
     CsvEncoding, CsvHeaders, CsvPosition, CsvReaderOptions, CsvTrim, RawBatchRecord,
 };
 
+use crate::validation::{CsvAnomalyPolicy, CsvRecordValidator};
+
 use super::header_resolver::CsvHeaderResolver;
 
 use crate::encoding::CsvDecodedReader;
@@ -19,6 +21,7 @@ pub struct CsvReader<R: Read> {
     options: CsvReaderOptions,
     headers: Option<CsvHeaders>,
     buffer: StringRecord,
+    expected_columns: Option<usize>,
     records_read: u64,
     next_line: u64,
     finished: bool,
@@ -47,6 +50,7 @@ impl<R: Read> CsvReader<R> {
             options,
             headers: None,
             buffer: StringRecord::new(),
+            expected_columns: None,
             records_read: 0,
             next_line: 1,
             finished: false,
@@ -81,7 +85,11 @@ impl<R: Read> CsvReader<R> {
 
             let names: Vec<String> = self.buffer.iter().map(str::to_owned).collect();
 
-            self.headers = Some(CsvHeaderResolver::resolve(names, &self.options)?);
+            let headers = CsvHeaderResolver::resolve(names, &self.options)?;
+
+            self.expected_columns = Some(headers.len());
+
+            self.headers = Some(headers);
         } else {
             self.finished = true;
         }
@@ -136,16 +144,28 @@ impl<R: Read> CsvReader<R> {
 
         self.records_read += 1;
 
-        Ok(RawBatchRecord {
+        let values: Vec<String> = self.buffer.iter().map(str::to_owned).collect();
+
+        if self.expected_columns.is_none() {
+            self.expected_columns = Some(values.len());
+        }
+
+        let anomalies = CsvRecordValidator::validate(&values, self.expected_columns, &self.options);
+
+        let record = RawBatchRecord {
             position: CsvPosition {
                 record_number: self.records_read,
                 line_start,
                 line_end,
                 byte_offset,
             },
-            values: self.buffer.iter().map(str::to_owned).collect(),
-            anomalies: Vec::new(),
-        })
+            values,
+            anomalies,
+        };
+
+        CsvAnomalyPolicy::evaluate(&record, self.options.error_policy)?;
+
+        Ok(record)
     }
 
     fn count_embedded_line_breaks(record: &StringRecord) -> u64 {
@@ -209,6 +229,10 @@ impl<R: Read> CsvReader<R> {
 
     pub fn bom_length(&self) -> usize {
         self.reader.get_ref().bom_length()
+    }
+
+    pub fn expected_columns(&self) -> Option<usize> {
+        self.expected_columns
     }
 }
 

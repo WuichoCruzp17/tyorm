@@ -270,7 +270,6 @@ fn should_reject_invalid_options() {
 }
 
 #[test]
-#[test]
 fn should_reject_encoding_mismatch() {
     let data = b"\xFF\xFEi\x00d\x00";
 
@@ -364,4 +363,149 @@ fn should_reject_multiline_headers() {
     let result = CsvReader::new(data.as_bytes(), CsvReaderOptions::default());
 
     assert!(matches!(result, Err(CsvError::InvalidHeaders { .. })));
+}
+
+#[test]
+fn should_continue_after_invalid_record() {
+    let data = concat!("id,name\n", "1,Luis\n", "2\n", "3,Ana\n");
+
+    let options = CsvReaderOptions {
+        error_policy: CsvErrorPolicy::ContinueOnError,
+        ..Default::default()
+    };
+
+    let mut reader = CsvReader::new(data.as_bytes(), options).unwrap();
+
+    let first = reader.next_record().unwrap().unwrap();
+    let second = reader.next_record().unwrap().unwrap();
+    let third = reader.next_record().unwrap().unwrap();
+
+    assert!(first.is_valid());
+    assert!(!second.is_valid());
+    assert!(third.is_valid());
+
+    assert_eq!(reader.records_read(), 3);
+    assert!(!reader.is_failed());
+}
+
+#[test]
+fn should_stop_after_invalid_record_in_fail_fast() {
+    let data = concat!("id,name\n", "1,Luis\n", "2\n", "3,Ana\n");
+
+    let options = CsvReaderOptions {
+        error_policy: CsvErrorPolicy::FailFast,
+        ..Default::default()
+    };
+
+    let mut reader = CsvReader::new(data.as_bytes(), options).unwrap();
+
+    assert!(reader.next_record().unwrap().unwrap().is_valid());
+
+    assert!(matches!(
+        reader.next_record(),
+        Err(CsvError::RecordRejected { .. })
+    ));
+
+    assert!(reader.is_failed());
+
+    assert!(matches!(reader.next_record(), Err(CsvError::SessionClosed)));
+}
+
+#[test]
+fn should_continue_after_warning_in_fail_fast() {
+    let data = "id,name\n1,Luis\u{200B}\n2,Ana\n";
+
+    let options = CsvReaderOptions {
+        error_policy: CsvErrorPolicy::FailFast,
+        ..Default::default()
+    };
+
+    let mut reader = CsvReader::new(data.as_bytes(), options).unwrap();
+
+    let first = reader.next_record().unwrap().unwrap();
+
+    assert!(first.has_anomalies());
+    assert!(first.is_valid());
+
+    let second = reader.next_record().unwrap().unwrap();
+
+    assert!(second.is_valid());
+}
+
+#[test]
+fn should_infer_column_count_without_headers() {
+    let data = "1,Luis\n2,Ana\n3\n";
+
+    let options = CsvReaderOptions {
+        has_headers: false,
+        ..Default::default()
+    };
+
+    let mut reader = CsvReader::new(data.as_bytes(), options).unwrap();
+
+    assert_eq!(reader.expected_columns(), None);
+
+    let first = reader.next_record().unwrap().unwrap();
+
+    assert!(first.is_valid());
+    assert_eq!(reader.expected_columns(), Some(2));
+
+    let second = reader.next_record().unwrap().unwrap();
+    let third = reader.next_record().unwrap().unwrap();
+
+    assert!(second.is_valid());
+    assert!(!third.is_valid());
+}
+
+#[test]
+fn should_use_header_column_count() {
+    let reader = CsvReader::new("id,name,email\n".as_bytes(), CsvReaderOptions::default()).unwrap();
+
+    assert_eq!(reader.expected_columns(), Some(3));
+}
+
+#[test]
+fn should_preserve_invalid_record_values() {
+    let data = "id,name\n1,Lu\0is\n";
+
+    let mut reader = CsvReader::new(data.as_bytes(), CsvReaderOptions::default()).unwrap();
+
+    let record = reader.next_record().unwrap().unwrap();
+
+    assert_eq!(record.values[1], "Lu\0is");
+    assert!(!record.is_valid());
+}
+
+#[test]
+fn should_count_rejected_record_in_fail_fast() {
+    let data = "id,name\n1,Luis\n2\n";
+
+    let options = CsvReaderOptions {
+        error_policy: CsvErrorPolicy::FailFast,
+        ..Default::default()
+    };
+
+    let mut reader = CsvReader::new(data.as_bytes(), options).unwrap();
+
+    assert!(reader.next_record().unwrap().is_some());
+    assert!(reader.next_record().is_err());
+
+    assert_eq!(reader.records_read(), 2);
+}
+
+#[test]
+fn should_preserve_position_of_invalid_record() {
+    let data = "id,name\n1,Luis\n2\n3,Ana\n";
+
+    let mut reader = CsvReader::new(data.as_bytes(), CsvReaderOptions::default()).unwrap();
+
+    reader.next_record().unwrap();
+
+    let invalid = reader.next_record().unwrap().unwrap();
+
+    assert_eq!(invalid.position.record_number, 2);
+    assert_eq!(invalid.position.line_start, 3);
+    assert_eq!(invalid.position.line_end, 3);
+
+    assert!(!invalid.is_valid());
 }
