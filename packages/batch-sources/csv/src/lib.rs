@@ -17,6 +17,10 @@ pub mod normalization;
 
 pub use normalization::*;
 
+pub mod streaming;
+
+pub use streaming::*;
+
 #[napi]
 pub fn hello_batch_csv() -> String {
     String::from("TyORM Batch CSV Engine")

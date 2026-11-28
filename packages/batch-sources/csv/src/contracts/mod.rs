@@ -12,3 +12,9 @@ pub use record::*;
 pub mod header;
 
 pub use header::CsvHeaders;
+
+pub mod session_state;
+pub mod session_statistics;
+
+pub use session_state::CsvSessionState;
+pub use session_statistics::CsvSessionStatistics;
