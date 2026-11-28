@@ -3,16 +3,49 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CsvHeaders {
     names: Vec<String>,
+    original_names: Option<Vec<String>>,
     indexes: HashMap<String, usize>,
 }
 
 impl CsvHeaders {
-    pub(crate) fn new(names: Vec<String>, indexes: HashMap<String, usize>) -> Self {
-        Self { names, indexes }
+    pub(crate) fn new(
+        names: Vec<String>,
+        original_names: Option<Vec<String>>,
+        indexes: HashMap<String, usize>,
+    ) -> Self {
+        Self {
+            names,
+            original_names,
+            indexes,
+        }
     }
 
     pub fn names(&self) -> &[String] {
         &self.names
+    }
+
+    pub fn original_names(&self) -> &[String] {
+        self.original_names.as_deref().unwrap_or(&self.names)
+    }
+
+    pub fn get_original_name(&self, index: usize) -> Option<&str> {
+        self.original_names().get(index).map(String::as_str)
+    }
+
+    pub fn was_normalized(&self) -> bool {
+        self.original_names.is_some()
+    }
+
+    pub fn normalized_count(&self) -> usize {
+        match &self.original_names {
+            Some(originals) => originals
+                .iter()
+                .zip(&self.names)
+                .filter(|(original, normalized)| original != normalized)
+                .count(),
+
+            None => 0,
+        }
     }
 
     pub fn len(&self) -> usize {

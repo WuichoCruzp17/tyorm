@@ -4,13 +4,31 @@ use crate::contracts::{CsvHeaders, CsvReaderOptions};
 
 use crate::errors::{CsvError, CsvResult};
 
+use crate::normalization::CsvNormalizer;
+
 pub struct CsvHeaderResolver;
 
 impl CsvHeaderResolver {
-    pub fn resolve(names: Vec<String>, options: &CsvReaderOptions) -> CsvResult<CsvHeaders> {
+    pub fn resolve(mut names: Vec<String>, options: &CsvReaderOptions) -> CsvResult<CsvHeaders> {
         options.validate()?;
 
         Self::validate_limits(&names, options)?;
+
+        for (index, name) in names.iter().enumerate() {
+            Self::validate_name(name, index)?;
+        }
+
+        let original_names = if options.trim.trims_headers()
+            && names.iter().any(|name| name.trim().len() != name.len())
+        {
+            let originals = names.clone();
+
+            CsvNormalizer::normalize_headers(&mut names, options.trim);
+
+            Some(originals)
+        } else {
+            None
+        };
 
         let mut indexes = HashMap::with_capacity(names.len());
 
@@ -21,13 +39,13 @@ impl CsvHeaderResolver {
                 return Err(CsvError::InvalidHeaders {
                     reason: format!(
                         "Duplicate header '{name}' at columns \
-                         {previous_index} and {index}"
+                     {previous_index} and {index}"
                     ),
                 });
             }
         }
 
-        Ok(CsvHeaders::new(names, indexes))
+        Ok(CsvHeaders::new(names, original_names, indexes))
     }
 
     fn validate_name(name: &str, index: usize) -> CsvResult<()> {

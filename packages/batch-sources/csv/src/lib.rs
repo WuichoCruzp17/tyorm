@@ -13,6 +13,10 @@ pub mod encoding;
 
 pub use encoding::*;
 
+pub mod normalization;
+
+pub use normalization::*;
+
 #[napi]
 pub fn hello_batch_csv() -> String {
     String::from("TyORM Batch CSV Engine")

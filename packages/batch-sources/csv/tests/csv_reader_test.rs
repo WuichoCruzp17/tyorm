@@ -290,18 +290,15 @@ fn should_reject_encoding_mismatch() {
 }
 
 #[test]
-fn should_reject_unsupported_normalization() {
+fn should_accept_normalization_options() {
     let options = CsvReaderOptions {
         trim: CsvTrim::All,
         ..Default::default()
     };
 
-    let result = CsvReader::new("id,name\n".as_bytes(), options);
+    let result = CsvReader::new(" id , name \n 1 , Luis \n".as_bytes(), options);
 
-    assert!(matches!(
-        result,
-        Err(CsvError::InvalidOption { field: "trim", .. })
-    ));
+    assert!(result.is_ok());
 }
 
 #[test]

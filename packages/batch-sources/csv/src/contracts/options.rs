@@ -65,3 +65,13 @@ impl CsvReaderOptions {
         crate::validation::CsvOptionsValidator::validate(self)
     }
 }
+
+impl CsvTrim {
+    pub fn trims_headers(self) -> bool {
+        matches!(self, Self::Headers | Self::All)
+    }
+
+    pub fn trims_fields(self) -> bool {
+        matches!(self, Self::Fields | Self::All)
+    }
+}

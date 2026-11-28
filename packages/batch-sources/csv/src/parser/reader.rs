@@ -6,15 +6,15 @@ use csv::{Reader, ReaderBuilder, StringRecord};
 
 use crate::errors::{CsvError, CsvResult};
 
-use crate::contracts::{
-    CsvEncoding, CsvHeaders, CsvPosition, CsvReaderOptions, CsvTrim, RawBatchRecord,
-};
+use crate::contracts::{CsvEncoding, CsvHeaders, CsvPosition, CsvReaderOptions, RawBatchRecord};
 
 use crate::validation::{CsvAnomalyPolicy, CsvRecordValidator};
 
 use super::header_resolver::CsvHeaderResolver;
 
 use crate::encoding::CsvDecodedReader;
+
+use crate::normalization::CsvNormalizer;
 
 pub struct CsvReader<R: Read> {
     reader: Reader<CsvDecodedReader<R>>,
@@ -31,8 +31,6 @@ pub struct CsvReader<R: Read> {
 impl<R: Read> CsvReader<R> {
     pub fn new(source: R, options: CsvReaderOptions) -> CsvResult<Self> {
         options.validate()?;
-
-        Self::validate_supported_options(&options)?;
 
         let decoded_source = CsvDecodedReader::new(source, options.encoding)?;
 
@@ -60,17 +58,6 @@ impl<R: Read> CsvReader<R> {
         instance.initialize()?;
 
         Ok(instance)
-    }
-
-    fn validate_supported_options(options: &CsvReaderOptions) -> CsvResult<()> {
-        if options.trim != CsvTrim::None {
-            return Err(CsvError::InvalidOption {
-                field: "trim",
-                reason: "Normalization is not implemented yet".to_string(),
-            });
-        }
-
-        Ok(())
     }
 
     fn initialize(&mut self) -> CsvResult<()> {
@@ -152,7 +139,7 @@ impl<R: Read> CsvReader<R> {
 
         let anomalies = CsvRecordValidator::validate(&values, self.expected_columns, &self.options);
 
-        let record = RawBatchRecord {
+        let mut record = RawBatchRecord {
             position: CsvPosition {
                 record_number: self.records_read,
                 line_start,
@@ -164,6 +151,8 @@ impl<R: Read> CsvReader<R> {
         };
 
         CsvAnomalyPolicy::evaluate(&record, self.options.error_policy)?;
+
+        CsvNormalizer::normalize_fields(&mut record.values, self.options.trim);
 
         Ok(record)
     }
@@ -234,13 +223,27 @@ impl<R: Read> CsvReader<R> {
     pub fn expected_columns(&self) -> Option<usize> {
         self.expected_columns
     }
+
+    pub fn original_headers(&self) -> Option<&[String]> {
+        self.headers.as_ref().map(CsvHeaders::original_names)
+    }
+
+    pub fn headers_were_normalized(&self) -> bool {
+        self.headers
+            .as_ref()
+            .is_some_and(CsvHeaders::was_normalized)
+    }
+
+    pub fn normalized_header_count(&self) -> usize {
+        self.headers
+            .as_ref()
+            .map_or(0, CsvHeaders::normalized_count)
+    }
 }
 
 impl CsvReader<File> {
     pub fn from_path(path: impl AsRef<Path>, options: CsvReaderOptions) -> CsvResult<Self> {
         options.validate()?;
-
-        Self::validate_supported_options(&options)?;
 
         let file = File::open(path)?;
 
