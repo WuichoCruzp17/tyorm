@@ -12,8 +12,10 @@ use crate::contracts::{
 
 use super::header_resolver::CsvHeaderResolver;
 
+use crate::encoding::CsvDecodedReader;
+
 pub struct CsvReader<R: Read> {
-    reader: Reader<R>,
+    reader: Reader<CsvDecodedReader<R>>,
     options: CsvReaderOptions,
     headers: Option<CsvHeaders>,
     buffer: StringRecord,
@@ -29,6 +31,8 @@ impl<R: Read> CsvReader<R> {
 
         Self::validate_supported_options(&options)?;
 
+        let decoded_source = CsvDecodedReader::new(source, options.encoding)?;
+
         let reader = ReaderBuilder::new()
             .delimiter(options.delimiter)
             .quote(options.quote)
@@ -36,7 +40,7 @@ impl<R: Read> CsvReader<R> {
             .double_quote(options.double_quote)
             .has_headers(false)
             .flexible(true)
-            .from_reader(source);
+            .from_reader(decoded_source);
 
         let mut instance = Self {
             reader,
@@ -55,12 +59,6 @@ impl<R: Read> CsvReader<R> {
     }
 
     fn validate_supported_options(options: &CsvReaderOptions) -> CsvResult<()> {
-        if options.encoding != CsvEncoding::Utf8 {
-            return Err(CsvError::UnsupportedEncoding {
-                encoding: format!("{:?}", options.encoding),
-            });
-        }
-
         if options.trim != CsvTrim::None {
             return Err(CsvError::InvalidOption {
                 field: "trim",
@@ -199,6 +197,18 @@ impl<R: Read> CsvReader<R> {
 
     pub fn is_failed(&self) -> bool {
         self.failed
+    }
+
+    pub fn detected_encoding(&self) -> CsvEncoding {
+        self.reader.get_ref().encoding()
+    }
+
+    pub fn has_bom(&self) -> bool {
+        self.reader.get_ref().has_bom()
+    }
+
+    pub fn bom_length(&self) -> usize {
+        self.reader.get_ref().bom_length()
     }
 }
 

@@ -43,6 +43,12 @@ pub enum CsvError {
 
     #[error("CSV internal error: {reason}")]
     Internal { reason: String },
+
+    #[error("CSV encoding mismatch: requested={requested:?}, detected={detected:?}")]
+    EncodingMismatch {
+        requested: crate::contracts::CsvEncoding,
+        detected: crate::contracts::CsvEncoding,
+    },
 }
 
 pub type CsvResult<T> = Result<T, CsvError>;

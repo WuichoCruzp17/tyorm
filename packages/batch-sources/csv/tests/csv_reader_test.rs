@@ -270,15 +270,24 @@ fn should_reject_invalid_options() {
 }
 
 #[test]
-fn should_reject_unsupported_encoding() {
+#[test]
+fn should_reject_encoding_mismatch() {
+    let data = b"\xFF\xFEi\x00d\x00";
+
     let options = CsvReaderOptions {
-        encoding: CsvEncoding::Windows1252,
+        encoding: CsvEncoding::Utf8,
         ..Default::default()
     };
 
-    let result = CsvReader::new("id,name\n".as_bytes(), options);
+    let result = CsvReader::new(data.as_slice(), options);
 
-    assert!(matches!(result, Err(CsvError::UnsupportedEncoding { .. })));
+    assert!(matches!(
+        result,
+        Err(CsvError::EncodingMismatch {
+            requested: CsvEncoding::Utf8,
+            detected: CsvEncoding::Utf16Le,
+        })
+    ));
 }
 
 #[test]
